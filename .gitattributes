@@ -1,0 +1,9 @@
+# 仓库统一用 LF：脚本要在 WSL/Linux 里跑，CRLF 会让 shebang 失效
+* text=auto eol=lf
+*.sh text eol=lf
+*.swift text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.html text eol=lf
+*.plist text eol=lf
+*.ipa binary

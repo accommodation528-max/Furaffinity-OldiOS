@@ -1,0 +1,22 @@
+# macOS / Finder
+.DS_Store
+
+# SwiftPM 构建产物
+.build/
+.swiftpm/
+Packages/
+*.swiftmodule
+*.o
+
+# xtool 构建/打包产物
+FAIOS/xtool/
+*.ipa
+
+# Xcode（将来若要开 xcodeproj）
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# 杂项
+.netrc
+*.log
