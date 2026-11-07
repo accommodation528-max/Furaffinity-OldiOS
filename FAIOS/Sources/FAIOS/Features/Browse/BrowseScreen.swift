@@ -65,11 +65,20 @@ struct BrowseScreen: View {
 struct ThumbnailCell: View {
     let submission: FASubmission
 
+    /// 网格里要「大致按真实比例」但必须夹住极端值：
+    /// 长条漫画（1:8）或全景（6:1）会让整行变成 1000pt 高，把屏幕撑成一张图 —— 真机上就是这么翻车的
+    private var displayRatio: CGFloat {
+        let ratio = submission.aspectRatio
+        guard ratio > 0 else { return 1 }
+        return min(max(ratio, 0.62), 1.7)
+    }
+
     var body: some View {
-        Color.clear
-            .aspectRatio(submission.aspectRatio > 0 ? submission.aspectRatio : 1, contentMode: .fit)
+        Color(.secondarySystemBackground)
+            .aspectRatio(displayRatio, contentMode: .fit)
             .overlay(
-                RemoteImage(url: submission.thumbnailURL)
+                // 列表页给的是 @200 缩略图，在视网膜屏上偏糊，往上提一档
+                RemoteImage(url: FAURLs.thumbnailSized(submission.thumbnailURL))
             )
             .clipped()
             .overlay(alignment: .bottomLeading) {
