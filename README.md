@@ -96,8 +96,8 @@ ios_use_control tap   # x/y 归一化 0..1
 
 | 里程碑 | 状态 |
 |---|---|
-| **M0 基础设施** | ✅ 编译链路、工程骨架、列表页解析器（22 测试）、`FAHTTP`、`RemoteImage` 图片管线、**真机跑通（真图出自 furaffinity.net）** |
-| M1 只读核心 | ⬜ 详情页 / 图片查看器 / 艺术家页 / 分页加载 |
+| **M0 基础设施** | ✅ 编译链路、工程骨架、列表页解析器、`FAHTTP`、`RemoteImage` 图片管线、**真机跑通（真图出自 furaffinity.net）** |
+| **M1 只读核心** | ✅ 首页 / 浏览 / 搜索 / 详情页 / 图片查看器 / 艺术家页 / 无限滚动，**全部真机验收**；37 个单测 |
 | M2 Cloudflare 与会话 | ⬜ 常驻 WKWebView + 挑战修复 + 登录 |
 | M3 账号功能 | ⬜ 关注流 / 收藏 / 关注 / 通知 / Notes |
 | M4 阅读器 | ⬜ 小说 / Journal / 进度记忆 |
@@ -109,8 +109,13 @@ ios_use_control tap   # x/y 归一化 0..1
   Cloudflare 直接 403。图片必须走我们自己的 `FAHTTP`（同 UA / 同 cookie），也就是 `RemoteImage`。
   实测：换成 `RemoteImage` 后 48 张缩略图全部加载成功。
 - **UA 必须唯一**：`cf_clearance` 与 UA 逐字节绑定，改了 UA 等于重新过挑战
-- **分页不是链接**：是 `method="GET"` 的表单，要从 hidden input 重建 query
+- **分页不是链接**：是 `method="GET"` 的表单，要从 hidden input 重建 query；
+  **搜索页的页码不在 hidden input 里**，在 `Next` 按钮自己的 `name/value` 上（否则永远翻不动）
+- **成人内容对未登录访客是 HTTP 200 的「Login Required」空壳页**，不是 403 —— 解析器要先过 `FAPageGuard`
 - **浏览页默认全是图片**（48/48），首页才是混合的（图片 64 / 文章 24 / 音乐 24）
 - **别用 `turnstile` 判断挑战**：正常登录页内嵌 4 处 Turnstile 控件，会误判
 - **`swift-tools-version: 6.0` 默认 Swift 6 严格并发**，已在 `Package.swift` 显式退回 `.v5`
 - **`scp` 在这台机器上会卡死**，用 `ssh 'cat > file'` 推文件（2.3MB / 2.7 秒）
+- **`uiopen` 在 SSH 里是空操作**（对所有 App 都不启动，rc 却是 0），启动要用 ios-use 的 agent
+- **极端宽高比会撑爆网格**：1:8 的长条漫画把整行拉到上千点高，显示比例要夹在 0.62~1.7
+- **`UIScrollView` 的布局别挂在 `updateUIView`**：那时 bounds 常还是 0，图片会按原始像素铺开（真机表现：只看到图的一个角）

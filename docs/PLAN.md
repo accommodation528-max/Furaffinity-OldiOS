@@ -245,7 +245,7 @@ cp xtool/FAIOS.ipa /mnt/d/faios/build/
 | 阶段 | 交付物 | 估时 |
 |---|---|---|
 | ~~**M0 基础设施**~~ ✅ | WSL+Swift+xtool 打通；SwiftPM 双包工程；`FAHTTP` + UA + 限流；`FAPages` 列表解析器 + 22 测试；端到端验证屏；`build/FAIOS.ipa` 2.27MB / minOS 15.0 | ~~3–4 天~~ 已完成 |
-| **M1 只读核心** | 首页 / 浏览 / 搜索 / 投稿详情 / 图片查看器 / 艺术家页；无限滚动；fixture 回归测试 | 6–8 天 |
+| **M1 只读核心** | ✅ 首页 / 浏览 / 搜索 / 投稿详情 / 图片查看器 / 艺术家页；无限滚动；37 个 fixture 回归测试；**逐屏真机验收通过**（估 6–8 天，实际 1 天） | ~~6–8 天~~ 已完成 |
 | **M2 Cloudflare 与会话** | 常驻 WebView + ChallengeCoordinator + 登录 sheet + Keychain cookie + 挑战修复链路 | 4–5 天 |
 | **M3 账号功能** | 关注流、收藏、关注、通知、Notes | 4–5 天 |
 | **M4 阅读器** | 小说阅读器（txt/md 原生，docx/pdf 分级降级）、Journal 阅读器、进度记忆、离线 | 4–6 天 |
@@ -293,7 +293,12 @@ cp xtool/FAIOS.ipa /mnt/d/faios/build/
 - **`AsyncImage` 在 FA 上必然全失败**：它用 `URLSession.shared`，无我们的 UA/cookie → Cloudflare 403。所有图片必须走 `FAHTTP`（`RemoteImage`）。这条对后面每个屏幕都成立。
 
 **接下来**
-9. **M1 主体**：详情页（`img#submissionImg` 的 fullview/preview）+ 图片查看器（缩放/下拉关闭）+ 艺术家页 + 无限滚动
+9. ~~**M1 主体**~~ ✅ 已完成（2026-11-07，逐屏真机验收）：详情页 / 图片查看器 / 艺术家页 / 无限滚动 / 搜索。
+   - 期间修掉三个真 bug：成人内容对访客返回 `Login Required` 空壳页（新增 `FAPageGuard`）；
+     搜索页翻不动（目标页码在 Next 按钮的 `name/value` 上，不在 hidden input 里）；
+     网格被 1:8 长条图撑爆（显示比例夹在 0.62~1.7）。
+10. **M2 Cloudflare 与会话**：常驻 WKWebView + ChallengeCoordinator + 登录 sheet + Keychain cookie。
+    没有这一步，NSFW、收藏、关注、通知全都拿不到。
 
 ---
 
