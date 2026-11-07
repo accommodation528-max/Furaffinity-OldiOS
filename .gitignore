@@ -10,7 +10,17 @@ Packages/
 
 # xtool 构建/打包产物
 FAIOS/xtool/
+FAIOS/.bsp/
 *.ipa
+
+# vendored SwiftSoup 只保留构建需要的那几个文件（其余是它的 CI/示例/Xcode 工程）
+Vendor/SwiftSoup/*
+!Vendor/SwiftSoup/Sources/
+!Vendor/SwiftSoup/Package.swift
+!Vendor/SwiftSoup/LICENSE
+!Vendor/SwiftSoup/README.md
+!Vendor/SwiftSoup/CHANGELOG.md
+!Vendor/SwiftSoup/SwiftSoup.podspec
 
 # Xcode（将来若要开 xcodeproj）
 xcuserdata/
