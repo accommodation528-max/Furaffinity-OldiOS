@@ -125,7 +125,14 @@ final class FASubmissionsPageTests: XCTestCase {
         let url = FAURLs.search("dragon")
         let page = try FASubmissionsPage.parse(try fixture("search"), from: url)
         XCTAssertEqual(page.submissions.count, 48, "搜索结果每页 48 条")
-        XCTAssertNotNil(page.nextPageURL, "搜索结果页有下一页")
+
+        // 搜索页的 page 不是 hidden input，而是 <select> + 按钮自带 name/value，
+        // 只读 hidden 会重建出「还是第 1 页」的地址（真机上的表现：永远停在 48 条）
+        let next = try XCTUnwrap(page.nextPageURL, "搜索结果页有下一页")
+        let comps = try XCTUnwrap(URLComponents(url: next, resolvingAgainstBaseURL: false))
+        let items = Dictionary(uniqueKeysWithValues: (comps.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(comps.path, "/search/")
+        XCTAssertEqual(items["page"], "2", "目标页来自 Next 按钮的 value")
 
         // 搜索结果页比首页更杂：图片 + 小说 + 音乐混在一起
         let counts = page.submissions.reduce(into: [FASubmissionKind: Int]()) { $0[$1.kind, default: 0] += 1 }
@@ -137,6 +144,16 @@ final class FASubmissionsPageTests: XCTestCase {
     func testSearchURLShape() {
         let url = FAURLs.search("dragon", page: 2)
         XCTAssertEqual(url.absoluteString, "https://www.furaffinity.net/search/?q=dragon&page=2")
+    }
+
+    func testThumbnailVariantIsRewritable() throws {
+        let first = try XCTUnwrap(try browsePage().submissions.first)
+        let bigger = FAURLs.thumbnailSized(first.thumbnailURL, pixels: 400)
+        XCTAssertTrue(bigger.absoluteString.contains("@400-"), "@200 应该被换成 @400")
+        XCTAssertTrue(bigger.absoluteString.hasSuffix(".jpg"))
+        // 没有档位标记的地址原样返回
+        let plain = URL(string: "https://d.furaffinity.net/art/x/y.png")!
+        XCTAssertEqual(FAURLs.thumbnailSized(plain).absoluteString, plain.absoluteString)
     }
 
     // MARK: - 容错

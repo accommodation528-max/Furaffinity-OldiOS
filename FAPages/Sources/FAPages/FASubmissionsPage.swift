@@ -124,6 +124,10 @@ public struct FASubmissionsPage: Sendable {
     // 实测（2026-11-07）：分页不是链接，而是一个 `method="GET"` 的 <form>，
     // 里面全是 hidden input（cat/atype/species/rating_*/per_page/page），按钮文本是 Next / Prev。
     // 所以要「读 form → 重建 query」，不能取 href（根本没有 href）。
+    //
+    // 坑：搜索页的 `page` 不是 hidden input，而是 <select>，真正的目标页在**按钮自己的属性**上
+    // （`<button type="submit" name="page" value="2">Next</button>`）。
+    // 只读 hidden 会重建出「还是第 1 页」的地址 → 翻页翻不动，表现为永远停在 48 条。
     private static func pagination(in doc: Document, pageURL: URL) throws -> (prev: URL?, next: URL?) {
         var prev: URL?
         var next: URL?
@@ -134,17 +138,31 @@ public struct FASubmissionsPage: Sendable {
             for button in buttons {
                 let label = ((try? button.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 guard label == "Next" || label == "Prev" else { continue }
-                guard let url = url(fromForm: form, pageURL: pageURL) else { continue }
+                guard let url = url(fromForm: form, button: button, pageURL: pageURL) else { continue }
                 if label == "Next" { next = url } else { prev = url }
             }
         }
         return (prev, next)
     }
 
-    private static func url(fromForm form: Element, pageURL: URL) -> URL? {
-        guard let inputs = try? form.select("input"), let items = try? hiddenQueryItems(in: inputs) else {
-            return nil
+    private static func url(fromForm form: Element, button: Element?, pageURL: URL) -> URL? {
+        var items: [URLQueryItem]
+        if let inputs = try? form.select("input"), let hidden = try? hiddenQueryItems(in: inputs) {
+            items = hidden
+        } else {
+            items = []
         }
+
+        // 按钮自身的 name/value 才是「点了这个按钮会提交什么」，优先级高于 hidden
+        if let button {
+            let name = (try? button.attr("name")) ?? ""
+            let value = (try? button.attr("value")) ?? ""
+            if !name.isEmpty {
+                items.removeAll { $0.name == name }
+                items.append(URLQueryItem(name: name, value: value))
+            }
+        }
+
         var components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false)
         components?.queryItems = items
         components?.fragment = nil
