@@ -78,4 +78,12 @@ public enum FAURLs {
         if s.hasPrefix("//") { return URL(string: "https:" + s) }
         return URL(string: s, relativeTo: pageURL)?.absoluteURL
     }
+
+    /// 缩略图档位就写在文件名里（`66962680@200-1794055731.jpg`），换成更大的档位只要改这个数字。
+    /// 实测 @300 / @400 / @600 都可用（@150 会 301）。列表页给的是 @200，视网膜屏上偏糊。
+    public static func thumbnailSized(_ url: URL, pixels: Int = 400) -> URL {
+        let raw = url.absoluteString
+        guard let range = raw.range(of: "@[0-9]+-", options: .regularExpression) else { return url }
+        return URL(string: raw.replacingCharacters(in: range, with: "@\(pixels)-")) ?? url
+    }
 }
