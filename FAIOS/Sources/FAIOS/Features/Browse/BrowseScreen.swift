@@ -11,6 +11,8 @@ struct BrowseScreen: View {
 
     @ObservedObject private var downloader = BatchDownloader.shared
     @State private var showDownloadInfo = false
+    /// 屏蔽词变了但还没摘行（等用户回到列表再摘，避免把详情页弹掉）
+    @State private var blocklistDirty = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 108), spacing: 3)
@@ -70,9 +72,17 @@ struct BrowseScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: .faiosContentModeDidChange)) { _ in
             Task { await model.reload() }
         }
-        // 屏蔽词：就地摘掉命中的条目，不重拉 —— 否则正停在详情页的人会被弹回列表
+        // 屏蔽词：**不要**在通知里立刻过滤。
+        // iOS 15 的 NavigationLink 把列表行当数据源，行一旦消失，正停在详情页的用户会被直接弹回列表。
+        // 所以只记一个「脏」标记，等用户自己回到列表（onAppear）时再摘。
         .onReceive(NotificationCenter.default.publisher(for: .faiosBlocklistDidChange)) { _ in
-            model.applyBlocklist()
+            blocklistDirty = true
+        }
+        .onAppear {
+            if blocklistDirty {
+                blocklistDirty = false
+                model.applyBlocklist()
+            }
         }
         // 批量下载：只能下已经加载到本地的那些（列表页没有原图地址）
         .toolbar {

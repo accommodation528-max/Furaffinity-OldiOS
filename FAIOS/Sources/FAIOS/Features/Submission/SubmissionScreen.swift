@@ -37,12 +37,13 @@ struct SubmissionScreen: View {
         return ContentFilter.shared.allows(rating) ? nil : rating
     }
 
-    /// 命中了哪个屏蔽词（列表层已经过滤过，这里兜住深链 / 相关链接进来的情况）
-    private var blockedWord: String? {
-        if let detail = model.detail { return Blocklist.shared.match(detail: detail) }
-        if let known { return Blocklist.shared.match(known) }
-        return nil
-    }
+    /// 命中了哪个屏蔽词 —— **进入这一页时算一次并冻住**，不跟着词表实时变。
+    ///
+    /// 理由：用户通常就是在这一页上按「屏蔽这位作者 / 某个标签」，如果实时重算，
+    /// 按下之后当前这一页立刻被自己的遮罩盖住，既莫名其妙又多一次点击。
+    /// 屏蔽是一项作用于**列表**的操作，不该反噬正在看的东西。
+    /// 从深链 / 相关链接进来时，仍然按当时的词表判定。
+    @State private var entryBlock: String?
 
     var body: some View {
         ScrollView {
@@ -63,7 +64,7 @@ struct SubmissionScreen: View {
                 .padding(.vertical, 16)
             }
             .overlay {
-                if let word = blockedWord, !revealed {
+                if let word = entryBlock, !revealed {
                     blockCover(word)
                 } else if let rating = blockedRating, !revealed {
                     ratingCover(rating)
@@ -146,7 +147,16 @@ struct SubmissionScreen: View {
                     .transition(.opacity)
             }
         }
-        .task(id: activeID) { await model.load(id: activeID) }
+        .task(id: activeID) {
+            // 换了作品就把「进入时命中的屏蔽词」重新算一遍（翻页条切下一条也算进入）
+            entryBlock = nil
+            await model.load(id: activeID)
+            if let detail = model.detail {
+                entryBlock = Blocklist.shared.match(detail: detail)
+            } else if let known {
+                entryBlock = Blocklist.shared.match(known)
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             if let feed {
                 SubmissionNavBar(feed: feed, id: activeID) { nextID in

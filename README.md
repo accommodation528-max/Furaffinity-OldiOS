@@ -235,7 +235,11 @@ ios_use_control tap   # x/y 归一化 0..1
   前缀 `u_/c_/t_/s_/a_` 是 FA 自己的分类标记。用户想屏蔽的是 `dragon` 而不是 `s_dragon`，
   所以每个 token 要同时给出「原样」和「去前缀」两种形式
 - **过滤后不要整页重拉**：`reload()` 会把 `submissions` 清空再填，`NavigationLink` 的数据源
-  瞬间变空 → 正停在详情页的用户被直接弹回列表。屏蔽词改成**就地摘条目**
+  瞬间变空 → 正停在详情页的用户被直接弹回列表
+- **就地摘条目也会弹**：列表行是 `NavigationLink` 的数据源，只要那一行从集合里消失，**
+  正停在它详情页的人立刻被弹回列表**（实测：详情页按「屏蔽这位作者」，自己被弹回首页）。
+  正确做法是「记脏标记 + 等用户自己回到列表（`onAppear`）再摘」；详情页的遮罩判定也
+  要在**进入时算一次冻住**，否则按下屏蔽的瞬间当前这页被自己的遮罩盖住
 - **TrollStore 卸载会连数据容器一起删**：所以 `scripts/install-trollstore.sh` 现在先备份
   `Documents/FAIOS` 再装、装完恢复 —— 否则每次升级都丢设置、丢下载、丢阅读进度
 - **iOS 15 的 `ToolbarContentBuilder` 不支持 `if`**：条件插 `ToolbarItem` 报

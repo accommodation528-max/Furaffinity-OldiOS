@@ -8,6 +8,8 @@ struct UserScreen: View {
 
     @StateObject private var model = UserViewModel()
     @State private var composing = false
+    /// 屏蔽词变了但还没摘行（等回到这一页再摘，避免把详情页弹掉）
+    @State private var blocklistDirty = false
 
     private let columns = [GridItem(.adaptive(minimum: 108), spacing: 4)]
 
@@ -49,7 +51,13 @@ struct UserScreen: View {
             Task { await model.reloadGallery() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .faiosBlocklistDidChange)) { _ in
-            model.applyBlocklist()
+            blocklistDirty = true
+        }
+        .onAppear {
+            if blocklistDirty {
+                blocklistDirty = false
+                model.applyBlocklist()
+            }
         }
     }
 
