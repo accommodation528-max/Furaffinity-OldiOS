@@ -333,6 +333,12 @@ struct AccountScreen: View {
                             Text("关注流")
                         }
                     }
+                    NavigationLink(destination: WatchlistScreen()) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "list.bullet.rectangle")
+                            Text("关注名单")
+                        }
+                    }
                     NavigationLink(destination: NotificationsScreen()) {
                         HStack(spacing: 10) {
                             Image(systemName: "bell")
@@ -497,8 +503,16 @@ struct AccountScreen: View {
             ("newpm", URL(string: "https://www.furaffinity.net/newpm/nosense528/")!),
             ("journal", FAURLs.journal(11447701)),
             ("controls", FAURLs.controls),
+            ("watchlist", FAURLs.watching(accountSlugForExport)),
+            ("watchers", FAURLs.watchers(accountSlugForExport)),
+            ("tag-search", FAURLs.tag("dragon")),
         ]
         checkMessage = await FADiag.exportPages(requests)
+    }
+
+    /// 导出用的账号名（`FAAccountStore` 里存着自己的 slug；没有就退回占位名，让它 404 也好过崩）
+    private var accountSlugForExport: String {
+        FAAccountStore.shared.slug ?? "nosense528"
     }
 }
 

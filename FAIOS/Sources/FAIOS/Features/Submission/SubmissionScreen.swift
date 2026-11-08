@@ -7,12 +7,20 @@ struct SubmissionScreen: View {
     let id: Int
     /// 从列表页带过来的已知信息 —— 详情没加载完时先用它画占位，避免白屏
     var known: FASubmission?
+    /// 列表上下文：有它就能左右翻作品、整页跳（网页版最缺的东西）
+    var feed: BrowseViewModel?
 
     @StateObject private var model = SubmissionViewModel()
     @State private var imageRatio: CGFloat?
     @State private var showViewer = false
     /// 被分级过滤挡下时，用户可以选择「这次就看」
     @State private var revealed = false
+    /// 翻页后显示的那一条（初始是外部传进来的 id）
+    @State private var currentID: Int?
+    /// 点了哪个标签（用它驱动隐藏的 NavigationLink，避免横向 ScrollView 吞掉点击）
+    @State private var tagToOpen: String?
+
+    private var activeID: Int { currentID ?? id }
 
     private var ratio: CGFloat {
         if let detailRatio = model.detail?.imageURL == nil ? nil : imageRatio { return detailRatio }
@@ -65,7 +73,17 @@ struct SubmissionScreen: View {
                 }
             }
         }
-        .task(id: id) { await model.load(id: id) }
+        .task(id: activeID) { await model.load(id: activeID) }
+        .safeAreaInset(edge: .bottom) {
+            if let feed {
+                SubmissionNavBar(feed: feed, id: activeID) { nextID in
+                    currentID = nextID
+                    revealed = false
+                    imageRatio = nil
+                    feed.prefetchIfNeeded(around: nextID)
+                }
+            }
+        }
         .fullScreenCover(isPresented: $showViewer) {
             if let url = model.detail?.imageURL {
                 ImageViewerScreen(url: url, title: model.detail?.title ?? "")
@@ -214,21 +232,27 @@ struct SubmissionScreen: View {
     private var tagRow: some View {
         Group {
             if let tags = model.detail?.tags, !tags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(tags, id: \.self) { tag in
-                            Text(tag)
-                                .font(.caption)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 4)
-                                .background(Color.secondary.opacity(0.14))
-                                .cornerRadius(9)
-                        }
-                    }
+                // 点标签就按这个标签去搜 —— 网页版要手动复制到搜索框，这里一步到位。
+                // 注意不能把 chip 放进横向 ScrollView：实测那层滚动手势会把点击吃掉
+                // （点上去毫无反应，只有手指真实滑动才生效），所以改成自动换行的流式布局。
+                FlowChips(terms: tags) { tag in
+                    tagToOpen = tag
                 }
-                .listRowInsets(EdgeInsets())
             }
         }
+        .background(
+            NavigationLink(
+                isActive: Binding(
+                    get: { tagToOpen != nil },
+                    set: { if !$0 { tagToOpen = nil } }
+                ),
+                destination: {
+                    BrowseScreen(startURL: FAURLs.tag(tagToOpen ?? ""), title: "#\(tagToOpen ?? "")")
+                },
+                label: { EmptyView() }
+            )
+            .hidden()
+        )
     }
 
     // MARK: - 描述
@@ -416,5 +440,96 @@ struct CommentRow: View {
             }
         }
         .padding(.leading, CGFloat(min(comment.depth, 4)) * 18)
+    }
+}
+
+/// 详情页底部的翻页条：`«` 上一页、`‹` 上一个作品、`›` 下一个作品、`»` 下一页。
+///
+/// 网页版最难受的就是这个 —— 看完一张要退回列表再点下一张。这里直接在详情页里翻，
+/// 而且知道自己在列表里的位置（`12 / 48`），翻到列表末尾会自动把下一页拉回来。
+struct SubmissionNavBar: View {
+    @ObservedObject var feed: BrowseViewModel
+    let id: Int
+    let onSelect: (Int) -> Void
+
+    @State private var busy = false
+
+    private var hasPrevious: Bool { feed.neighbour(of: id, offset: -1) != nil }
+    private var hasNext: Bool { feed.neighbour(of: id, offset: 1) != nil || feed.nextPageURL != nil }
+    private var hasPreviousPage: Bool { feed.pageStart(before: id) != nil }
+    private var hasNextPage: Bool { feed.pageStart(afterLoadedOnly: id) != nil || feed.nextPageURL != nil }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 0) {
+                button("backward.end.fill", enabled: hasPreviousPage) {
+                    if let target = feed.pageStart(before: id) { onSelect(target) }
+                }
+                button("chevron.left", enabled: hasPrevious) {
+                    go(offset: -1)
+                }
+
+                Spacer(minLength: 0)
+
+                VStack(spacing: 1) {
+                    Text(feed.positionLabel(of: id))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundColor(.secondary)
+                    if let page = feed.pageIndex(of: id) {
+                        Text("第 \(page + 1) 页").font(.system(size: 9))
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                }
+                .frame(minWidth: 66)
+
+                Spacer(minLength: 0)
+
+                button("chevron.right", enabled: hasNext) {
+                    go(offset: 1)
+                }
+                button("forward.end.fill", enabled: hasNextPage) {
+                    goPage()
+                }
+            }
+            .padding(.horizontal, 6)
+            .frame(height: 44)
+            .background(.regularMaterial)
+        }
+    }
+
+    private func button(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 52, height: 44)
+                .contentShape(Rectangle())
+        }
+        .disabled(!enabled || busy)
+        .opacity(enabled ? 1 : 0.28)
+    }
+
+    /// 前后翻作品：撞到已加载列表的边缘就先把下一页拉回来，再走一步
+    private func go(offset: Int) {
+        if let target = feed.neighbour(of: id, offset: offset) {
+            onSelect(target)
+            return
+        }
+        guard offset > 0, feed.nextPageURL != nil, !busy else { return }
+        busy = true
+        Task {
+            await feed.load()
+            busy = false
+            if let target = feed.neighbour(of: id, offset: offset) { onSelect(target) }
+        }
+    }
+
+    private func goPage() {
+        guard !busy else { return }
+        busy = true
+        Task {
+            if let target = await feed.pageStart(after: id) { onSelect(target) }
+            busy = false
+        }
     }
 }

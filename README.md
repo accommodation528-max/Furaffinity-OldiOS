@@ -126,6 +126,7 @@ ios_use_control tap   # x/y 归一化 0..1
 | **性能与图片缓存** | ✅ 两级缓存（内存 400 张 / 96MB + 磁盘 320MB）+ ImageIO 解码期降采样 + 静态资源独立车道。真机实测：重进页面 **省 53~59% 网络**，一屏 12 张出图时间从 4.2s 的量级降到 ~1s |
 | **音乐播放器** | ✅ 详情页播放卡片（封面/进度/时间）+ 全局迷你播放条（切 tab 继续控制）+ 锁屏与控制中心（`MPRemoteCommandCenter`）+ 后台播放（补了 `UIBackgroundModes: [audio]`）。音频先下载再播 —— 直链要过 Cloudflare 与 cookie |
 | **M5 打磨** | 🟡 已完成：诊断项收进「诊断」折叠区、版本号自动递增、App 图标（脚本生成）、**网络诊断与代理设置**。待做：深/浅色主题细节、无障碍标签 |
+| **翻页与浏览增强** | ✅ 详情页底部翻页条（`«` 上一页 / `‹` 上个作品 / `›` 下个作品 / `»` 下一页，带 `12 / 48 · 第 1 页` 计数，翻到列表末尾自动续页）；**关注名单**（我关注的 / 关注我的 + 名单内搜索）；**标签搜索**（点标签直接看该标签的列表）；**批量下载**（列表页右上角，存进「文件」App 可见的目录）。全部真机验收 |
 
 ### 已知的坑（都已写进代码注释）
 
@@ -212,3 +213,13 @@ ios_use_control tap   # x/y 归一化 0..1
   SOCKS 只能靠系统级代理 App（VPN 模式）
 - **`connectionProxyDictionary` 只作用于我们的 `URLSession`**：`WKWebView`（登录页、发私信页）走系统网络栈，
   不读这个设置 —— 这两个场景必须让代理 App 在系统层生效
+- **FA 的详情页没有任何 prev/next 链接**（全量扫过 `detail-logged-in.html` 的 `<a>`）：所谓「翻下一张」
+  只能靠我们自己的列表上下文实现 —— 列表把 `BrowseViewModel` 连同 `pageStarts` 一起传进详情页，
+  才知道「这是第几张、下一页从哪开始」
+- **横向 `ScrollView` 里的 chip 点不动**：标签条当初放在 `ScrollView(.horizontal)` 里，真机点上去毫无
+  反应（手指真实滑动才生效，那层滚动手势把 tap 吃掉了）。改成自动换行的流式布局 + 隐藏
+  `NavigationLink(isActive:)` 才可点
+- **批量下载只能下 @600**：列表页的 `figure` 里只有缩略图地址（`t.furaffinity.net/…@200-…`），原图地址
+  只存在于详情页的 `data-fullview-src`。要原图得进详情页单张下载
+- **下载目录要在「文件」App 里可见**，得往 Info.plist 补 `UIFileSharingEnabled` 与
+  `LSSupportsOpeningDocumentsInPlace`（`scripts/patch-ipa.py` 已加）——否则文件躺在容器里，用户看不到

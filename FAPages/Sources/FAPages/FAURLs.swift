@@ -97,6 +97,29 @@ public enum FAURLs {
         return c.url!
     }
 
+    /// 标签搜索。站内标签点进去就是 `@keywords` 运算符（网页版 JS 也是这么拼的），
+    /// 多个标签用空格连起来表示「同时包含」。注意扩展运算符要求 `q` 里带前缀，不能裸传标签名。
+    public static func tag(_ tags: String, page: Int = 1) -> URL {
+        let cleaned = tags
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "@keywords", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return search("@keywords " + cleaned, page: page)
+    }
+
+    // MARK: - 关注
+
+    /// 我关注的人（`/watchlist/by/{me}/`）。和 `/msg/submissions/` 的「关注流投稿」是两件事：
+    /// 这里是「谁在被我关注」的名单，带每人的投稿数。
+    public static func watching(_ name: String, page: Int = 1) -> URL {
+        base.appendingPathComponent("/watchlist/by/\(name)/\(page)/")
+    }
+
+    /// 关注我的人（`/watchlist/to/{me}/`）
+    public static func watchers(_ name: String, page: Int = 1) -> URL {
+        base.appendingPathComponent("/watchlist/to/\(name)/\(page)/")
+    }
+
     // MARK: - 资源
 
     /// 页面里的图片地址是协议相对的（`//t.furaffinity.net/...`），必须补成 https

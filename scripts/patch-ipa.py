@@ -85,6 +85,15 @@ def patch_app_plist(path: str) -> int:
             }
             changed.append(f"icons x{len(present)}")
 
+    # 让「文件」App 能看到沙箱里的 Documents —— 批量下载的图就是从这里取走的。
+    # 少了这两个键，下载完的文件对用户是不可见的（只有 App 自己能读）。
+    if not plist.get("UIFileSharingEnabled"):
+        plist["UIFileSharingEnabled"] = True
+        changed.append("UIFileSharingEnabled")
+    if not plist.get("LSSupportsOpeningDocumentsInPlace"):
+        plist["LSSupportsOpeningDocumentsInPlace"] = True
+        changed.append("LSSupportsOpeningDocumentsInPlace")
+
     # 每次构建都涨一个 build 号：
     # SpringBoard 的图标缓存按 bundle version 判定是否失效，
     # 版本号不变时换了图标也只会继续显示旧图（或占位图）。

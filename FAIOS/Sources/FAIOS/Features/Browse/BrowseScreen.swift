@@ -9,6 +9,9 @@ struct BrowseScreen: View {
     @StateObject private var model: BrowseViewModel
     private let title: String
 
+    @ObservedObject private var downloader = BatchDownloader.shared
+    @State private var showDownloadInfo = false
+
     private let columns = [
         GridItem(.adaptive(minimum: 108), spacing: 3)
     ]
@@ -22,7 +25,7 @@ struct BrowseScreen: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 3) {
                 ForEach(model.submissions) { submission in
-                    NavigationLink(destination: SubmissionScreen(id: submission.id, known: submission)) {
+                    NavigationLink(destination: SubmissionScreen(id: submission.id, known: submission, feed: model)) {
                         ThumbnailCell(submission: submission)
                     }
                     .buttonStyle(.plain)
@@ -66,6 +69,98 @@ struct BrowseScreen: View {
         // 改了分级过滤同理：可见集合变了，旧数据不能留
         .onReceive(NotificationCenter.default.publisher(for: .faiosContentModeDidChange)) { _ in
             Task { await model.reload() }
+        }
+        // 批量下载：只能下已经加载到本地的那些（列表页没有原图地址）
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                downloadMenu
+            }
+        }
+        .overlay(alignment: .bottom) {
+            downloadBanner
+        }
+    }
+
+    private var downloadMenu: some View {
+        Menu {
+            if downloader.isRunning {
+                Button(role: .destructive) { downloader.cancel() } label: {
+                    Label("取消下载", systemImage: "xmark.circle")
+                }
+            } else {
+                Button {
+                    downloader.download(model.submissions)
+                    showDownloadInfo = true
+                } label: {
+                    Label("下载已加载的 \(model.submissions.count) 张", systemImage: "arrow.down.circle")
+                }
+                .disabled(model.submissions.isEmpty)
+
+                Button {
+                    downloader.download(Array(model.submissions.prefix(12)))
+                    showDownloadInfo = true
+                } label: {
+                    Label("只下载前 12 张", systemImage: "arrow.down.to.line")
+                }
+                .disabled(model.submissions.isEmpty)
+            }
+        } label: {
+            Image(systemName: downloader.isRunning ? "arrow.down.circle.fill" : "arrow.down.circle")
+        }
+    }
+
+    @ViewBuilder
+    private var downloadBanner: some View {
+        switch downloader.phase {
+        case .idle:
+            EmptyView()
+
+        case .running(let done, let total, let current):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    ProgressView().scaleEffect(0.7)
+                    Text("下载中 \(done)/\(total)")
+                        .font(.caption).bold()
+                    Spacer()
+                    Button("取消") { downloader.cancel() }
+                        .font(.caption)
+                }
+                if !current.isEmpty {
+                    Text(current)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(10)
+            .background(.regularMaterial)
+            .cornerRadius(10)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+
+        case .finished(let saved, let failed, let folder):
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Image(systemName: failed == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundColor(failed == 0 ? .green : .orange)
+                    Text(failed == 0 ? "下载完成 · \(saved) 张" : "下载完成 · 成功 \(saved) · 失败 \(failed)")
+                        .font(.caption).bold()
+                    Spacer()
+                    Button {
+                        downloader.dismiss()
+                    } label: {
+                        Image(systemName: "xmark").font(.caption2)
+                    }
+                }
+                Text("在「文件」App 的 \(folder) 里取用")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            .padding(10)
+            .background(.regularMaterial)
+            .cornerRadius(10)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
     }
 }
@@ -131,6 +226,8 @@ final class BrowseViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var errorText: String?
     @Published private(set) var nextPageURL: URL?
+    /// 每页第一条在 `submissions` 里的下标 —— 详情页的「上一页 / 下一页」靠它算边界
+    @Published private(set) var pageStarts: [Int] = []
 
     private let startURL: URL
 
@@ -140,6 +237,7 @@ final class BrowseViewModel: ObservableObject {
 
     func reload() async {
         submissions = []
+        pageStarts = []
         nextPageURL = nil
         errorText = nil
         await load()
@@ -171,6 +269,9 @@ final class BrowseViewModel: ObservableObject {
                     !known.contains($0.id) && ContentFilter.shared.allows($0.rating)
                 }
                 let before = submissions.count
+                if !fresh.isEmpty || submissions.isEmpty {
+                    pageStarts.append(before)
+                }
                 submissions.append(contentsOf: fresh)
                 nextPageURL = (page.nextPageURL == url || page.nextPageURL == previousPageURL)
                     ? nil
@@ -197,6 +298,78 @@ final class BrowseViewModel: ObservableObject {
         guard let index = submissions.lastIndex(where: { $0.id == current.id }) else { return }
         guard index >= submissions.count - 12 else { return }
         guard nextPageURL != nil, !isLoading else { return }
+        Task { await load() }
+    }
+}
+
+// MARK: - 详情页的「相邻作品 / 上下页」
+
+extension BrowseViewModel {
+
+    func index(of id: Int) -> Int? {
+        submissions.firstIndex { $0.id == id }
+    }
+
+    /// 当前位置，给按钮上那行「12 / 48」
+    func positionLabel(of id: Int) -> String {
+        guard let index = index(of: id) else { return "" }
+        return "\(index + 1) / \(submissions.count)"
+    }
+
+    /// 前一个 / 后一个作品（同一份列表里）
+    func neighbour(of id: Int, offset: Int) -> Int? {
+        guard let index = index(of: id) else { return nil }
+        let target = index + offset
+        guard submissions.indices.contains(target) else { return nil }
+        return submissions[target].id
+    }
+
+    /// 是否已经滚到「已加载列表」的最后一屏 —— 再往后翻就要先拉下一页
+    func isNearEnd(of id: Int, margin: Int = 3) -> Bool {
+        guard let index = index(of: id) else { return false }
+        return index >= submissions.count - max(1, margin)
+    }
+
+    /// 当前这条属于第几页（按 pageStarts 归类，末尾页也算进去）
+    func pageIndex(of id: Int) -> Int? {
+        guard let index = index(of: id), !pageStarts.isEmpty else { return nil }
+        return pageStarts.lastIndex(where: { $0 <= index }) ?? 0
+    }
+
+    /// 「上一页」：回到上一页的第一条；只在已经加载过的页里找
+    func pageStart(before id: Int) -> Int? {
+        guard let page = pageIndex(of: id), page > 0 else { return nil }
+        let start = pageStarts[page - 1]
+        guard submissions.indices.contains(start) else { return nil }
+        return submissions[start].id
+    }
+
+    /// 「下一页」是否已经加载在本地（不触发网络）
+    func pageStart(afterLoadedOnly id: Int) -> Int? {
+        guard let page = pageIndex(of: id), page + 1 < pageStarts.count else { return nil }
+        let start = pageStarts[page + 1]
+        return submissions.indices.contains(start) ? submissions[start].id : nil
+    }
+
+    /// 「下一页」：下一页的第一条；还没加载过就先拉一页
+    func pageStart(after id: Int) async -> Int? {
+        guard let page = pageIndex(of: id) else { return nil }
+        if page + 1 < pageStarts.count {
+            let start = pageStarts[page + 1]
+            return submissions.indices.contains(start) ? submissions[start].id : nil
+        }
+        guard nextPageURL != nil else { return nil }
+        let before = submissions.count
+        await load()
+        // 新页可能被分级过滤整页吃掉，load() 内部会继续翻；这里以「列表变长了」为准
+        guard submissions.count > before, page + 1 < pageStarts.count else { return nil }
+        let start = pageStarts[page + 1]
+        return submissions.indices.contains(start) ? submissions[start].id : nil
+    }
+
+    /// 往后翻作品时顺手预取：滚到倒数第 3 条就把下一页拉回来
+    func prefetchIfNeeded(around id: Int) {
+        guard isNearEnd(of: id), nextPageURL != nil, !isLoading else { return }
         Task { await load() }
     }
 }
