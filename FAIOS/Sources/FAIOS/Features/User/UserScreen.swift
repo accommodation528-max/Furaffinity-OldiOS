@@ -7,6 +7,7 @@ struct UserScreen: View {
     let slug: String
 
     @StateObject private var model = UserViewModel()
+    @State private var composing = false
 
     private let columns = [GridItem(.adaptive(minimum: 108), spacing: 4)]
 
@@ -39,6 +40,11 @@ struct UserScreen: View {
         .navigationTitle(model.profile?.displayName ?? slug)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: slug) { await model.load(slug: slug) }
+        .sheet(isPresented: $composing) {
+            NavigationView {
+                ComposeNoteScreen(recipient: slug, replyKey: nil, subject: "")
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .faiosContentModeDidChange)) { _ in
             Task { await model.reloadGallery() }
         }
@@ -87,6 +93,18 @@ struct UserScreen: View {
                             .cornerRadius(8)
                     }
                     .disabled(model.watchBusy)
+
+                    Button {
+                        composing = true
+                    } label: {
+                        Image(systemName: "envelope")
+                            .font(.caption)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.secondary.opacity(0.16))
+                            .foregroundColor(.primary)
+                            .cornerRadius(8)
+                    }
                 }
             }
             .padding(.horizontal, 14)

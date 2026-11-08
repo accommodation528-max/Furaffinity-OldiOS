@@ -100,8 +100,8 @@ ios_use_control tap   # x/y 归一化 0..1
 | **M1 只读核心** | ✅ 首页 / 浏览 / 搜索 / 详情页 / 图片查看器 / 艺术家页 / 无限滚动，**全部真机验收**；37 个单测 |
 | M2 Cloudflare 与会话 | ✅ 应用内 WKWebView 登录（密码不经过 App）、cookie 存 Keychain、**重启进程与重启手机后登录态仍在**；登录态自检与挑战修复链路已接 |
 | **内容分级（SFW 开关）** | ✅ 「我的 → 内容分级」：全部 / 隐藏 Adult / 只看 General；列表过滤 + 缩略图 `M` / `18+` 角标 + 详情页遮罩。真机验收：首页 112 → 70 条 |
-| M3 账号功能 | ✅ 收藏 / 关注 / 评论（只读）/ 通知 / 关注流 / 我的收藏，全部真机验收；46 个单测。**Notes（私信）未做** |
-| M4 阅读器 | ⬜ 小说 / Journal / 进度记忆 |
+| M3 账号功能 | ✅ 收藏 / 关注 / 评论（只读）/ 通知 / 关注流 / 我的收藏 / **Notes（私信）**，全部真机验收；55 个单测 |
+| M4 阅读器 | 🟡 Journal 阅读器 ✅（标题/作者/时间/分级/正文/评论）；小说阅读器 ⬜；进度记忆 ⬜ |
 | M5 打磨 | ⬜ 主题 / 无障碍 / 图标 |
 
 ### 已知的坑（都已写进代码注释）
@@ -137,3 +137,15 @@ ios_use_control tap   # x/y 归一化 0..1
   用「我的 → 导出页面快照（调试）」把页面写到 `/var/tmp`，再 `ssh cat` 取回当 fixture
 - **`RelativeDateTimeFormatter` 跟系统语言走**：设备是英文系统，界面是中文，相对时间会变成 "2 yr. ago"，
   统一走 `FAFormat.relative` 强制 zh_Hans（同理 `Section` 标题会被自动大写，要 `.textCase(nil)`）
+- **发私信不能走 HTTP**：`/newpm/{user}/` 的表单里嵌着 Cloudflare Turnstile，直接 `URLSession` POST `/msg/send/`
+  只会拿到 `CAPTCHA verification failed`。发信必须在真实 `WKWebView` 里做（`ComposeNoteWebView`）：
+  填表 → 人点一下「请验证您是真人」→ 我们轮询隐藏 input `cf-turnstile-response` → `requestSubmit()`
+- **点击页面上的 `Send Note` 按钮无效**，但 JS `requestSubmit()` 有效（同一表单）——只能程序化提交
+- **发信结果页有三种形态，只认一种就会假成功**：
+  ① `section.notice-message`（CAPTCHA 失败等）② `System Error`（只有 `<h2>` + `section-body`，例如
+  「You cannot send notes to yourself」）③ **写信页原样重渲染**（FA 静默拒绝，一句提示都没有）。
+  判据是「离开 `/newpm/` 且看到私信列表」，不是「没有错误提示」
+- **`didFinish` 不是「DOM 就绪」**：`didCommit` 更早，两者都要触发填表，而且要读回字段确认填上了再提交
+  （实测 `didCommit` 时表单还没长出来，主题和正文是空的 → 提交必然失败）
+- **FA 拒绝给自己发私信**（`You cannot send notes to yourself`）。这反而是最好的验证：能走到这句错误，
+  就说明 cookie、Turnstile、表单提交、结果解析**全都对了**，只差一个真实收信人

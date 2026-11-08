@@ -79,6 +79,33 @@ final class FACookieStore {
             .joined(separator: " ")
     }
 
+    /// 把内存里的 cookie 还原成 `HTTPCookie`，用来注入 WKWebView 的 cookie store。
+    ///
+    /// 为什么需要反向注入：`a` / `b` 是我们自己存在 Keychain 里的，WKWebView 那边
+    /// 只有它自己见过的 cookie。重装/重启后 WebView 可能是「未登录」状态，
+    /// 而用它去发私信会直接撞上 `System Message: Please log in!`（实测踩过）。
+    var httpCookies: [HTTPCookie] {
+        lock.lock()
+        let snapshot = values
+        lock.unlock()
+
+        return snapshot.compactMap { name, value in
+            var props: [HTTPCookiePropertyKey: Any] = [
+                .name: name,
+                .value: value,
+                .domain: ".\(FAURLs.domain)",
+                .path: "/",
+                .secure: "TRUE",
+                .expires: Date().addingTimeInterval(60 * 60 * 24 * 90),
+            ]
+            // cf_clearance 是 HttpOnly 的，注入时标上，尽量贴近服务端原样
+            if name.hasPrefix("cf_") || name.hasPrefix("__cf") {
+                props[.init("HttpOnly")] = "TRUE"
+            }
+            return HTTPCookie(properties: props)
+        }
+    }
+
     // MARK: - 写
 
     /// 我们真正需要的 cookie。`_ga` / `FCNEC` / `OAID` / `FA-Cache-Clear` 这些是第三方

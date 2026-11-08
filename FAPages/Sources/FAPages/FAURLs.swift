@@ -33,6 +33,20 @@ public enum FAURLs {
 
     public static var notesCompose: URL { base.appendingPathComponent("/controls/notes/new/") }
 
+    /// 发私信的表单 action（POST，字段 key/to/subject/message）
+    public static var sendNote: URL { base.appendingPathComponent("/msg/send/") }
+
+    /// 「给某人写私信」的预填页面（GET 一次可拿到 CSRF key）
+    public static func newNote(to name: String) -> URL {
+        base.appendingPathComponent("/newpm/\(name)/")
+    }
+
+    /// 用户头像的**无日期**地址。站点通常给 `a.furaffinity.net/<yyyyMMdd>/<user>.gif`，
+    /// 列表里拿不到日期，这条不带日期的地址能直接命中。
+    public static func avatar(_ name: String) -> URL? {
+        URL(string: "https://a.furaffinity.net/\(name).gif")
+    }
+
     /// 账号设置页（顺带用来取自己的用户名）
     public static var controls: URL { base.appendingPathComponent("/controls/") }
 

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!--
+  人造 fixture：私信详情页（`/msg/pms/<folder>/<id>/#message`）。
+  真实页面来自登录态，开发机上拿不到（用户收件箱是空的），
+  这里按站点实际结构手工搭一个最小页面，用于锁住选择器；
+  真机端到端会用「给自己发一封私信」再验一次。
+-->
+<html><head><title>User control panel -- Fur Affinity [dot] net</title></head>
+<body>
+<div id="main-window">
+  <div id="site-content">
+    <div class="messagecenter-mail-container">
+      <div class="messagecenter-mail-content-pane">
+        <div class="messagecenter-mail-note-preview-pane">
+          <section id="message" class="section_container">
+            <div class="section-header">
+              <h2>Re: hello there</h2>
+              <div class="message-center-note-information">
+                <div class="addresses">
+                  <div class="c-usernameBlock">
+                    <a class="c-usernameBlock__displayName js-displayName-block" href="/user/nosense528/">
+                      <span class="js-displayName">nosense528</span>
+                    </a>
+                  </div>
+                  <span class="popup_date" data-time="1794000000" title="November 7, 2026 03:20:00 AM">a few minutes ago</span>
+                </div>
+              </div>
+            </div>
+            <div class="section-body">
+              <div class="user-submitted-links">
+                First line of the note<br />
+                second line with a <a href="/user/nosense528/">link</a><br />
+                and <a href="/externalurl/?q=https%3A%2F%2Fexample.com%2Fx" class="external">an external one</a>
+              </div>
+            </div>
+          </section>
+          <form id="note-form" method="post" action="/msg/send/">
+            <input type="hidden" name="key" value="7c6444740ec983b0b05fdb89765ae0f30a23a940a45b5cadd456430aa88a4218" />
+            <textarea id="JSMessage_reply" name="message"></textarea>
+            <input type="text" name="to" value="nosense528" />
+            <input type="text" name="subject" value="Re: hello there" />
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

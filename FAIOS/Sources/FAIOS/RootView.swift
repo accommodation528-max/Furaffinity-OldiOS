@@ -42,8 +42,13 @@ struct RootView: View {
             }
         }
         .onAppear {
-            // 冷启动先让 WebView 跑一遍首页续信任；顺手把登录态刷进界面
-            Task { await FAWebHost.shared.warmUpIfNeeded() }
+            // 冷启动先把 Keychain 里的会话注回 WKWebView —— 否则 WebView 是未登录身份，
+            // 「续 Cloudflare 信任」用的就是访客，白跑一趟。
+            Task {
+                await FAWebCookieBridge.injectStoredCookies()
+                // 再让 WebView 跑一遍首页续信任；顺手把登录态刷进界面
+                await FAWebHost.shared.warmUpIfNeeded()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .faiosLoginDidChange)) { _ in
             // 登录态变化后，列表里的旧结果（比如 NSFW 的 Login Required）要能重来
@@ -207,6 +212,12 @@ struct AccountScreen: View {
                             Text("通知")
                         }
                     }
+                    NavigationLink(destination: NotesScreen()) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "envelope")
+                            Text("私信")
+                        }
+                    }
                     if let favorites = account.favoritesURL {
                         NavigationLink(destination: BrowseScreen(startURL: favorites, title: "我的收藏")) {
                             HStack(spacing: 10) {
@@ -313,6 +324,10 @@ struct AccountScreen: View {
             ("msg-others", FAURLs.msgNotifications),
             ("msg-submissions", FAURLs.msgSubmissions),
             ("pms", FAURLs.notesInbox),
+            ("pms-sent", FAURLs.notesSent),
+            ("pms-archive", URL(string: "https://www.furaffinity.net/msg/pms/archive/")!),
+            ("newpm", URL(string: "https://www.furaffinity.net/newpm/nosense528/")!),
+            ("journal", FAURLs.journal(11447701)),
             ("controls", FAURLs.controls),
         ]
         checkMessage = await FADiag.exportPages(requests)

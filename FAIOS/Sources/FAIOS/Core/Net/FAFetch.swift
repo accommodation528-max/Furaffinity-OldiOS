@@ -64,6 +64,29 @@ enum FAFetch {
             return text
         }
     }
+
+    /// 提交表单（发私信 / 回信 / 发评论）。
+    ///
+    /// 与 `perform` 的区别：这是 POST，字段里必须带页面上给出的 CSRF `key`；
+    /// 挑战恢复顺序完全一样 —— 先修，再**恰好重试一次**。
+    @discardableResult
+    static func submit(_ url: URL, fields: [(String, String)]) async throws -> String {
+        do {
+            let text = try await FAHTTP.shared.submitForm(url, fields: fields)
+            FADiag.record("POST \(url.path) → \(text.utf8.count)B title=\(FADiag.title(of: text))")
+            // 调试：POST 返回的页面先落盘，看清 FA 到底回了「成功页」还是「错误页」
+            _ = FADiag.dump(text, name: "last-post")
+            return text
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch FAHTTP.FAHTTPError.challenge(let interactive) {
+            FADiag.record("POST-CHALLENGE \(url.path) interactive=\(interactive)")
+            await ChallengeGate.shared.recover(interactive: interactive)
+            let text = try await FAHTTP.shared.submitForm(url, fields: fields)
+            FADiag.record("POST-RETRY \(url.path) → \(text.utf8.count)B")
+            return text
+        }
+    }
 }
 
 /// Cloudflare 挑战的修复流程。顺序不能改：

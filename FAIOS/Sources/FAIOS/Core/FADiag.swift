@@ -100,6 +100,20 @@ enum FADiag {
         return results
     }
 
+    /// 把一段 HTML 落到第一个可写目录（真机调试用：POST 回来的页面到底长什么样，
+    /// 只有落到盘上再用 SSH 取回来才看得清）。
+    @discardableResult
+    static func dump(_ html: String, name: String) -> String? {
+        guard let target = writableDirectories().first(where: { $0.2 })?.1 else { return nil }
+        let file = target.appendingPathComponent("fa_\(name).html")
+        do {
+            try html.data(using: .utf8)?.write(to: file)
+            return file.path
+        } catch {
+            return nil
+        }
+    }
+
     /// 真机是唯一有登录态的机器：把几个「需要登录才看得到结构」的页面抓下来存到可写目录，
     /// 再用 SSH 取回 PC，作为解析层的真实 fixture（离线就能写测试）。
     static func exportPages(_ requests: [(String, URL)]) async -> String {

@@ -45,9 +45,12 @@ struct NotificationsScreen: View {
 
     @ViewBuilder
     private func row(_ item: FANotification) -> some View {
-        // 只有投稿能点进详情页；日志与喊话的页面 M4 再做，先老实显示不可点
         if let url = item.url, let sid = Self.submissionID(from: url) {
             NavigationLink(destination: SubmissionScreen(id: sid, known: nil)) {
+                content(item)
+            }
+        } else if let url = item.url, let jid = Self.journalID(from: url) {
+            NavigationLink(destination: JournalScreen(id: jid)) {
                 content(item)
             }
         } else {
@@ -95,6 +98,13 @@ struct NotificationsScreen: View {
     static func submissionID(from url: URL) -> Int? {
         let parts = url.pathComponents.filter { $0 != "/" }
         guard parts.count >= 2, parts[0] == "view" else { return nil }
+        return Int(parts[1])
+    }
+
+    /// `/journal/11447701/` → 11447701
+    static func journalID(from url: URL) -> Int? {
+        let parts = url.pathComponents.filter { $0 != "/" }
+        guard parts.count >= 2, parts[0] == "journal" else { return nil }
         return Int(parts[1])
     }
 

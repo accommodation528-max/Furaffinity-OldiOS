@@ -83,17 +83,41 @@ public actor FAHTTP {
     /// - Returns: 页面源码
     /// - Throws: `FAHTTPError.challenge` 时上层应走修复流程，**重新调用本方法**而不是自己重试
     public func fetchHTML(_ url: URL) async throws -> String {
-        let data = try await fetchData(url)
+        try await html(from: try await fetchData(url))
+    }
+
+    /// 提交一个表单（`application/x-www-form-urlencoded`），返回结果页 HTML。
+    ///
+    /// FA 的发私信 / 回复 / 发评论都是 POST 表单（页面上藏在 `<form>` 里的 hidden `key`
+    /// 就是 CSRF token，必须先 GET 原页面拿到它再 POST）。
+    /// 302 由 URLSession 自动跟随，拿到的已经是动作生效后的页面。
+    public func submitForm(_ url: URL, fields: [(String, String)]) async throws -> String {
+        var comps = URLComponents()
+        comps.queryItems = fields.map { URLQueryItem(name: $0.0, value: $0.1) }
+        let encoded = comps.percentEncodedQuery ?? ""
+        var body = encoded
+        // URLComponents 会把空格编成 "%20"，x-www-form-urlencoded 更常见的是 "+"；
+        // FA 两种都认，但统一用 "+" 少踩一个坑。
+        body = body.replacingOccurrences(of: "%20", with: "+")
+        let data = body.data(using: .utf8) ?? Data()
+        return try await html(from: try await fetchData(url, method: "POST", body: data))
+    }
+
+    private func html(from data: Data) throws -> String {
         if let text = String(data: data, encoding: .utf8) { return text }
         if let text = String(data: data, encoding: .isoLatin1) { return text }
         throw FAHTTPError.decoding
     }
 
     public func fetchData(_ url: URL) async throws -> Data {
+        try await fetchData(url, method: "GET", body: nil)
+    }
+
+    private func fetchData(_ url: URL, method: String, body: Data?) async throws -> Data {
         var attempt = 0
         while true {
             do {
-                return try await performOnce(url)
+                return try await performOnce(url, method: method, body: body)
             } catch let error as FAHTTPError {
                 switch error {
                 case .transport, .http(500...599):
@@ -110,14 +134,18 @@ public actor FAHTTP {
 
     // MARK: - 单次请求
 
-    private func performOnce(_ url: URL) async throws -> Data {
+    private func performOnce(_ url: URL, method: String = "GET", body: Data? = nil) async throws -> Data {
         await gate.acquire()
         defer { Task { await gate.release() } }
 
         await waitForSpacing()
 
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = method
+        request.httpBody = body
+        if body != nil {
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        }
         if let cookies = FACookieStore.shared.headerValue {
             request.setValue(cookies, forHTTPHeaderField: "Cookie")
         }
