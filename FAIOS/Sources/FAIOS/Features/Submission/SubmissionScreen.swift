@@ -35,6 +35,7 @@ struct SubmissionScreen: View {
 
                 VStack(alignment: .leading, spacing: 16) {
                     header
+                    musicCard
                     tagRow
                     description
                     stats
@@ -162,7 +163,7 @@ struct SubmissionScreen: View {
                 .buttonStyle(.plain)
 
                 // 故事（.text）正文不在页面里，只有一个下载链接 —— 给条显眼的入口
-                if detail.kind == .text || detail.downloadURL != nil {
+                if detail.kind == .text {
                     NavigationLink(destination: StoryScreen(detail: detail)) {
                         HStack(spacing: 9) {
                             Image(systemName: detail.storyFormat?.isNativelyReadable == true ? "book" : "arrow.down.doc")
@@ -197,6 +198,14 @@ struct SubmissionScreen: View {
                     .foregroundColor(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// 音乐播放卡片（`.audio` 投稿的音频直链在 `detail.musicURL`）
+    @ViewBuilder
+    private var musicCard: some View {
+        if let detail = model.detail, detail.kind == .audio, detail.musicURL != nil {
+            MusicCard(detail: detail)
         }
     }
 

@@ -29,6 +29,10 @@ struct RootView: View {
                     .tabItem { Label("我的", systemImage: "person.crop.circle") }
             }
             .accentColor(.orange)   // iOS 15 用 accentColor，不是 tint
+            // 音乐播放条：贴在 TabBar 上方，切 tab 也能继续控制
+            .safeAreaInset(edge: .bottom) {
+                MiniPlayerBar()
+            }
 
             if gate.isSolving {
                 HStack(spacing: 8) {
@@ -195,6 +199,14 @@ struct AccountScreen: View {
                     HStack(spacing: 10) {
                         Image(systemName: "book")
                         Text("打开故事样本（调试）")
+                    }
+                }
+
+                // 调试用：一条音乐投稿（用来验证播放器与锁屏控制）
+                NavigationLink(destination: SubmissionScreen(id: 66961793)) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "music.note")
+                        Text("打开音乐样本（调试）")
                     }
                 }
 

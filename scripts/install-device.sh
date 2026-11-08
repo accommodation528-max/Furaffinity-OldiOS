@@ -13,7 +13,16 @@ set -euo pipefail
 HOST="${HOST:-192.168.0.102}"
 USER_NAME="${USER_NAME:-root}"
 PASS="${PASS:-alpine}"
-IPA="${IPA:-$(cd "$(dirname "$0")/.." && pwd)/FAIOS/xtool/FAIOS.ipa}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# 优先用 build/ 里的产物：scripts/build.sh 会往 Info.plist 补 UIBackgroundModes（后台播放），
+# FAIOS/xtool/FAIOS.ipa 是 xtool 的原始产物，没有这个补丁。
+if [ -n "${IPA:-}" ]; then
+  :
+elif [ -f "$ROOT/build/FAIOS.ipa" ]; then
+  IPA="$ROOT/build/FAIOS.ipa"
+else
+  IPA="$ROOT/FAIOS/xtool/FAIOS.ipa"
+fi
 BUNDLE_ID="${BUNDLE_ID:-app.faios.client}"
 REMOTE_IPA="/var/mobile/Media/FAIOS.ipa"
 REMOTE_APP="/var/jb/Applications/FAIOS.app"
