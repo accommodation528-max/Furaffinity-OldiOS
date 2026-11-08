@@ -530,6 +530,7 @@ struct SubmissionNavBar: View {
     private var hasNext: Bool { feed.neighbour(of: id, offset: 1) != nil || feed.nextPageURL != nil }
     private var hasPreviousPage: Bool { feed.pageStart(before: id) != nil }
     private var hasNextPage: Bool { feed.pageStart(afterLoadedOnly: id) != nil || feed.nextPageURL != nil }
+    private var counter: (position: String, detail: String) { feed.pageCounterLabel(of: id) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -545,17 +546,17 @@ struct SubmissionNavBar: View {
                 Spacer(minLength: 0)
 
                 VStack(spacing: 1) {
-                    Text(feed.positionLabel(of: id))
+                    Text(counter.position)
                         .font(.caption2.monospacedDigit())
                         .foregroundColor(.secondary)
-                    if let page = feed.pageIndex(of: id) {
-                        Text("第 \(page + 1) 页").font(.system(size: 9))
-                            .foregroundColor(.secondary.opacity(0.7))
-                    }
+                    Text(counter.detail)
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary.opacity(0.7))
+                        .lineLimit(1)
                 }
-                .frame(minWidth: 66)
+                .frame(minWidth: 78)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("列表第 \(feed.positionLabel(of: id)) 张")
+                .accessibilityLabel("本页第 \(counter.position) 张，\(counter.detail)")
                 .accessibilityAddTraits(.isStaticText)
 
                 Spacer(minLength: 0)

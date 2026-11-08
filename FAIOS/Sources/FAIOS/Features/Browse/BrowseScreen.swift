@@ -368,6 +368,28 @@ extension BrowseViewModel {
         return submissions[start].id
     }
 
+    /// 在当前这一页里的位置（第几张 / 这一页共几张）。
+    ///
+    /// 为什么不用「全列表位置 / 全列表总数」：总条数会随着翻页不断变大（48 → 93 → 138…），
+    /// 于是「49 / 93」下一秒变成「93 / 138」，读数像是在漂。网页版给的是「本页第几张、本页共几张」，
+    /// 分母固定，才像个页码。
+    func pagePosition(of id: Int) -> (index: Int, size: Int)? {
+        guard let page = pageIndex(of: id), pageStarts.indices.contains(page) else { return nil }
+        guard let index = index(of: id) else { return nil }
+        let start = pageStarts[page]
+        let end = page + 1 < pageStarts.count ? pageStarts[page + 1] : submissions.count
+        guard end > start, index >= start, index < end else { return nil }
+        return (index - start + 1, end - start)
+    }
+
+    /// 底部条中间那两行的文案：本页 `3 / 45`，下面一行是页码与已加载总数
+    func pageCounterLabel(of id: Int) -> (position: String, detail: String) {
+        let position = pagePosition(of: id).map { "\($0.index) / \($0.size)" }
+            ?? positionLabel(of: id)
+        let page = (pageIndex(of: id) ?? 0) + 1
+        return (position, "第 \(page) 页 · 已加载 \(submissions.count)")
+    }
+
     /// 「下一页」是否已经加载在本地（不触发网络）
     func pageStart(afterLoadedOnly id: Int) -> Int? {
         guard let page = pageIndex(of: id), page + 1 < pageStarts.count else { return nil }
