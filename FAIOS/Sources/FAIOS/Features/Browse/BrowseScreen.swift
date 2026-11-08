@@ -59,6 +59,10 @@ struct BrowseScreen: View {
         .task {
             if model.submissions.isEmpty { await model.load() }
         }
+        // 登录/退出后列表的可见范围会变（未登录看不到成人内容），必须重拉
+        .onReceive(NotificationCenter.default.publisher(for: .faiosLoginDidChange)) { _ in
+            Task { await model.reload() }
+        }
     }
 }
 
@@ -124,7 +128,7 @@ final class BrowseViewModel: ObservableObject {
             let url = nextPageURL ?? startURL
             // 防死循环：解析器要是指回同一个 URL，就当到底了
             let previousPageURL = nextPageURL
-            let html = try await FAHTTP.shared.fetchHTML(url)
+            let html = try await FAFetch.html(url)
             let page = try FASubmissionsPage.parse(html, from: url)
             let known = Set(submissions.map { $0.id })
             let fresh = page.submissions.filter { !known.contains($0.id) }

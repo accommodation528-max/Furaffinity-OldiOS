@@ -98,7 +98,7 @@ ios_use_control tap   # x/y 归一化 0..1
 |---|---|
 | **M0 基础设施** | ✅ 编译链路、工程骨架、列表页解析器、`FAHTTP`、`RemoteImage` 图片管线、**真机跑通（真图出自 furaffinity.net）** |
 | **M1 只读核心** | ✅ 首页 / 浏览 / 搜索 / 详情页 / 图片查看器 / 艺术家页 / 无限滚动，**全部真机验收**；37 个单测 |
-| M2 Cloudflare 与会话 | ⬜ 常驻 WKWebView + 挑战修复 + 登录 |
+| M2 Cloudflare 与会话 | ✅ 应用内 WKWebView 登录（密码不经过 App）、cookie 存 Keychain、**重启进程与重启手机后登录态仍在**；登录态自检与挑战修复链路已接 |
 | M3 账号功能 | ⬜ 关注流 / 收藏 / 关注 / 通知 / Notes |
 | M4 阅读器 | ⬜ 小说 / Journal / 进度记忆 |
 | M5 打磨 | ⬜ 主题 / 无障碍 / 图标 |
@@ -119,3 +119,11 @@ ios_use_control tap   # x/y 归一化 0..1
 - **`uiopen` 在 SSH 里是空操作**（对所有 App 都不启动，rc 却是 0），启动要用 ios-use 的 agent
 - **极端宽高比会撑爆网格**：1:8 的长条漫画把整行拉到上千点高，显示比例要夹在 0.62~1.7
 - **`UIScrollView` 的布局别挂在 `updateUIView`**：那时 bounds 常还是 0，图片会按原始像素铺开（真机表现：只看到图的一个角）
+- **`a` / `b` 是会话对，必须一起更新**：网页里 FA 会轮换 `b` 并清掉 `a`，无脑逐条吸收会存成「旧 a + 新 b」的混合体，
+  服务端判定无效 → App 显示已登录、所有请求却按访客返回 Login Required（这个坑排查了很久，见 `FACookieStore.absorb`）
+- **ad-hoc 签名默认没有 entitlements**：`ldid -e <binary>` 输出为空 → Keychain 写入静默失败（`-34018`），
+  登录态一重装就丢。安装脚本必须 `ldid -S scripts/FAIOS.entitlements`
+- **手动拷贝安装的 App 写不进自己的容器**：`Documents/diag.log` 报 `NSCocoaErrorDomain 513`，
+  真机没有控制台时只能把诊断信息画到屏幕上
+- **Cloudflare 挑战不一定发生**：删掉 `cf_clearance` 后请求依然 200（带 `a`/`b` 就够），
+  所以挑战修复链路目前只是保险，未被真实触发过

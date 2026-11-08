@@ -26,15 +26,30 @@ SSHO=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTime
 echo "→ 推送 $(du -h "$IPA" | cut -f1) 到 $HOST"
 sshpass -e ssh "${SSHO[@]}" -T "$USER_NAME@$HOST" "cat > $REMOTE_IPA" < "$IPA"
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENTITLEMENTS="${ENTITLEMENTS:-$SCRIPT_DIR/FAIOS.entitlements}"
+HAVE_ENT=0
+if [ -f "$ENTITLEMENTS" ]; then
+  sshpass -e ssh "${SSHO[@]}" -T "$USER_NAME@$HOST" "cat > /tmp/faios.entitlements" < "$ENTITLEMENTS"
+  HAVE_ENT=1
+fi
+
 echo "→ 解包 / 重签 / 注册"
+# 注意：killall 要用**可执行文件名**（FAIOS），不是 bundle id 的最后一段（client）。
+# 用 "${BUNDLE_ID##*.}" 会去 kill 一个叫 client 的进程 —— 什么也不会发生，
+# 于是新包装上去了、跑的还是旧进程（这个坑踩过一次：改的代码"没生效"）
 sshpass -e ssh "${SSHO[@]}" "$USER_NAME@$HOST" "set -e
-  killall -9 $(basename "${BUNDLE_ID##*.}") 2>/dev/null || true
+  killall -9 FAIOS 2>/dev/null || true
   rm -rf /tmp/faios-ipa && mkdir -p /tmp/faios-ipa
   /var/jb/usr/bin/unzip -q -o $REMOTE_IPA -d /tmp/faios-ipa
   rm -rf $REMOTE_APP
   cp -R /tmp/faios-ipa/Payload/FAIOS.app $REMOTE_APP
   chmod 755 $REMOTE_APP/FAIOS
-  /var/jb/usr/bin/ldid -S $REMOTE_APP/FAIOS
+  if [ $HAVE_ENT -eq 1 ]; then
+    /var/jb/usr/bin/ldid -S/tmp/faios.entitlements $REMOTE_APP/FAIOS
+  else
+    /var/jb/usr/bin/ldid -S $REMOTE_APP/FAIOS
+  fi
   /var/jb/usr/bin/uicache -a >/dev/null 2>&1
   /var/jb/usr/bin/uicache -l 2>/dev/null | grep -i faios"
 

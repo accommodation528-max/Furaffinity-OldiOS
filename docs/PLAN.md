@@ -297,8 +297,15 @@ cp xtool/FAIOS.ipa /mnt/d/faios/build/
    - 期间修掉三个真 bug：成人内容对访客返回 `Login Required` 空壳页（新增 `FAPageGuard`）；
      搜索页翻不动（目标页码在 Next 按钮的 `name/value` 上，不在 hidden input 里）；
      网格被 1:8 长条图撑爆（显示比例夹在 0.62~1.7）。
-10. **M2 Cloudflare 与会话**：常驻 WKWebView + ChallengeCoordinator + 登录 sheet + Keychain cookie。
-    没有这一步，NSFW、收藏、关注、通知全都拿不到。
+10. ~~**M2 Cloudflare 与会话**~~ ✅ 已完成（2026-11-08）：
+    - 应用内 WKWebView 登录（Turnstile 由它承担，密码不经过 App）→ `a`/`b` 存 Keychain。
+    - 常驻 WebView `FAWebHost`（全尺寸挂在视图层级最底层）负责续 Cloudflare 信任；导航全局串行化。
+    - `FAFetch` 统一出口 + `ChallengeGate`（淘汰连接 → 暖机 → 再淘汰 → 恰好重试一次）。
+    - 登录态自检：用 `/view/66962944/`（访客必得 Login Required）当探针，一次请求验证整条链路。
+    - 真机结论：**进程重启与手机重启后登录态都还在**；`cf_clearance` 实测非必需（删掉后仍 200）。
+    - 踩坑：`a`/`b` 必须成对更新（否则拼出「旧 a + 新 b」混合体，服务端判定访客）；ad-hoc 签名默认无
+      entitlements → Keychain 静默失败（`-34018`），装机要 `ldid -S scripts/FAIOS.entitlements`。
+11. **M3 账号功能**：收藏 / 关注 / 评论 / 通知 / Notes（收藏与关注的 URL 直接来自页面里的按钮 `href`，带 token，GET 即可）。
 
 ---
 

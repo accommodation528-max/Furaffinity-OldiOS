@@ -40,7 +40,8 @@ public actor FAHTTP {
 
     // MARK: - 状态
 
-    private let session: URLSession
+    private let config: URLSessionConfiguration
+    private var session: URLSession
     private let gate = AsyncSemaphore(limit: FAChallenge.Throttle.maxConcurrent)
     private var lastRequestTime: Date?
 
@@ -61,7 +62,18 @@ public actor FAHTTP {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
+        self.config = config
         self.session = URLSession(configuration: config)
+    }
+
+    /// 丢掉连接池里现存的连接（挑战修复用）。
+    ///
+    /// Cloudflare 判的是**连接**而不是请求：solve 花 1.5–25 秒，
+    /// 这期间新开的连接带的还是旧的 `cf_clearance`，所以必须把连接池整个换掉再重试。
+    /// URLSession 没有「清空连接」的 API，换一个 session 是等价且唯一可靠的做法。
+    public func resetConnections() {
+        session.invalidateAndCancel()
+        session = URLSession(configuration: config)
     }
 
     // MARK: - 公开接口

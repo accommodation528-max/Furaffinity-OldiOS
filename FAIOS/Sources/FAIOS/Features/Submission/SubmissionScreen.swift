@@ -210,7 +210,7 @@ final class SubmissionViewModel: ObservableObject {
 
         let url = FAURLs.submission(id)
         do {
-            let html = try await FAHTTP.shared.fetchHTML(url)
+            let html = try await FAFetch.html(url)
             detail = try FASubmissionDetail.parse(html, from: url)
             loadedID = id
         } catch {

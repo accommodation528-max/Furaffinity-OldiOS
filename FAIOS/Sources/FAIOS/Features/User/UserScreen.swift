@@ -137,7 +137,7 @@ final class UserViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let html = try await FAHTTP.shared.fetchHTML(FAURLs.user(slug))
+            let html = try await FAFetch.html(FAURLs.user(slug))
             let parsed = try FAUserProfile.parse(html, from: FAURLs.user(slug))
             profile = parsed
             await fetchGallery(parsed.galleryURL)
@@ -160,7 +160,7 @@ final class UserViewModel: ObservableObject {
         guard pendingPageURL != url else { return }
         pendingPageURL = url
         do {
-            let html = try await FAHTTP.shared.fetchHTML(url)
+            let html = try await FAFetch.html(url)
             let page = try FASubmissionsPage.parse(html, from: url)
             let existing = Set(submissions.map { $0.id })
             submissions.append(contentsOf: page.submissions.filter { !existing.contains($0.id) })
