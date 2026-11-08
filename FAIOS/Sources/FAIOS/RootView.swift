@@ -91,6 +91,7 @@ struct AccountScreen: View {
 
     @ObservedObject private var host = FAWebHost.shared
     @ObservedObject private var filter = ContentFilter.shared
+    @ObservedObject private var account = FAAccountStore.shared
     @State private var checkMessage: String?
 
     var body: some View {
@@ -168,6 +169,17 @@ struct AccountScreen: View {
                     }
                 }
 
+                // 调试用：真机是唯一有登录态的机器，把需要登录的页面抓到可写目录里，
+                // 再用 SSH 拉回 PC 当解析层的真实 fixture（离线就能写测试）
+                Button {
+                    Task { await exportSnapshots() }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "square.and.arrow.up.on.square")
+                        Text("导出页面快照（调试）")
+                    }
+                }
+
                 if let message = checkMessage {
                     Text(message)
                         .font(.footnote)
@@ -178,6 +190,36 @@ struct AccountScreen: View {
                 Text("连接")
             } footer: {
                 Text("被 Cloudflare 拦下时点「刷新信任」：会用内嵌网页重新过一遍验证，然后重开连接。")
+            }
+
+            // 登录后才有的入口：关注流 / 通知 / 我的收藏
+            if host.isLoggedIn {
+                Section {
+                    NavigationLink(destination: BrowseScreen(startURL: FAURLs.msgSubmissions, title: "关注流")) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "person.2.circle")
+                            Text("关注流")
+                        }
+                    }
+                    NavigationLink(destination: NotificationsScreen()) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "bell")
+                            Text("通知")
+                        }
+                    }
+                    if let favorites = account.favoritesURL {
+                        NavigationLink(destination: BrowseScreen(startURL: favorites, title: "我的收藏")) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "heart")
+                                Text("我的收藏")
+                            }
+                        }
+                    }
+                } header: {
+                    Text("我的内容")
+                } footer: {
+                    Text(account.slug.map { "以 @\($0) 的身份浏览。" } ?? "正在获取你的用户名…")
+                }
             }
 
             Section {
@@ -228,9 +270,20 @@ struct AccountScreen: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("我的")
+        .task(id: host.isLoggedIn) {
+            // 登录后要知道「我是谁」，才能给出收藏页入口
+            await FAAccountStore.shared.refreshIfNeeded(force: false)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .faiosLoginDidChange)) { _ in
             // 登录/退出后旧的检查结论一律作废，否则会留着「未登录」这种过期文案
             checkMessage = nil
+            Task {
+                if FACookieStore.shared.isLoggedIn {
+                    await FAAccountStore.shared.refreshIfNeeded(force: true)
+                } else {
+                    FAAccountStore.shared.clear()
+                }
+            }
         }
     }
 
@@ -250,6 +303,19 @@ struct AccountScreen: View {
     private func runHealthCheck(forceChallenge: Bool = false) async {
         checkMessage = forceChallenge ? "检查中（先制造一次挑战）…" : "检查中…"
         checkMessage = await FAHealthCheck.run(forceChallenge: forceChallenge)
+    }
+
+    /// 把「只有登录后才看得出结构」的页面各抓一份，落到可写目录，SSH 取回当 fixture
+    private func exportSnapshots() async {
+        checkMessage = "导出中（每页约 1 秒）…"
+        let requests: [(String, URL)] = [
+            ("detail", FAURLs.submission(66962944)),
+            ("msg-others", FAURLs.msgNotifications),
+            ("msg-submissions", FAURLs.msgSubmissions),
+            ("pms", FAURLs.notesInbox),
+            ("controls", FAURLs.controls),
+        ]
+        checkMessage = await FADiag.exportPages(requests)
     }
 }
 

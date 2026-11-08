@@ -72,6 +72,22 @@ struct UserScreen: View {
                     }
                 }
                 Spacer()
+
+                // 关注按钮只在登录后出现（未登录页没有这个 href）
+                if model.watchURL != nil {
+                    Button {
+                        Task { await model.toggleWatch() }
+                    } label: {
+                        Text(model.isWatching ? "已关注" : "关注")
+                            .font(.caption).bold()
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(model.isWatching ? Color.secondary.opacity(0.16) : Color.orange)
+                            .foregroundColor(model.isWatching ? Color.secondary : Color.white)
+                            .cornerRadius(8)
+                    }
+                    .disabled(model.watchBusy)
+                }
             }
             .padding(.horizontal, 14)
 
@@ -133,6 +149,11 @@ final class UserViewModel: ObservableObject {
     private var pendingPageURL: URL?
     private var loadedSlug: String?
 
+    /// 关注状态：和详情页的收藏一样，点完立刻变，不等整页重拉
+    @Published private(set) var isWatching = false
+    @Published private(set) var watchURL: URL?
+    @Published private(set) var watchBusy = false
+
     func load(slug: String) async {
         guard loadedSlug != slug, !isLoading else { return }
         loadedSlug = slug
@@ -143,10 +164,45 @@ final class UserViewModel: ObservableObject {
             let html = try await FAFetch.html(FAURLs.user(slug))
             let parsed = try FAUserProfile.parse(html, from: FAURLs.user(slug))
             profile = parsed
+            isWatching = parsed.isWatching
+            watchURL = parsed.watchURL
             await fetchGallery(parsed.galleryURL)
         } catch {
             errorText = FAErrorMessage.describe(error)
             loadedSlug = nil
+        }
+    }
+
+    /// 关注 / 取消关注：href 上带 key，GET 即可（和收藏同一套机制）。
+    ///
+    /// 同样**不能拿动作的响应当结果** —— 实测 `/watch/{user}/?key=` 回来的页面结构
+    /// 跟用户页不一样（作者名、头像、统计全对不上）。乐观翻转 + 重取用户页确认。
+    func toggleWatch() async {
+        guard let url = watchURL, let slug = loadedSlug, !watchBusy else { return }
+        watchBusy = true
+        defer { watchBusy = false }
+
+        let wanted = !isWatching
+        let previous = isWatching
+        isWatching = wanted
+
+        do {
+            _ = try await FAFetch.perform(url)
+            let userURL = FAURLs.user(slug)
+            let html = try await FAFetch.html(userURL)
+            let fresh = try FAUserProfile.parse(html, from: userURL)
+            profile = fresh
+            isWatching = fresh.isWatching
+            watchURL = fresh.watchURL
+            if fresh.isWatching != wanted {
+                isWatching = previous
+                errorText = "关注没生效（服务器可能限速了，稍后再试）"
+            } else {
+                errorText = nil
+            }
+        } catch {
+            isWatching = previous
+            errorText = FAErrorMessage.describe(error)
         }
     }
 

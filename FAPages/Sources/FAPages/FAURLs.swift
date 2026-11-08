@@ -18,6 +18,29 @@ public enum FAURLs {
 
     public static var notifications: URL { base.appendingPathComponent("/msg/notifications/") }
 
+    // MARK: - 消息中心（需要登录）
+
+    /// 站内通知（评论、收藏、关注……）
+    public static var msgNotifications: URL { base.appendingPathComponent("/msg/others/") }
+
+    /// 关注对象的新投稿
+    public static var msgSubmissions: URL { base.appendingPathComponent("/msg/submissions/") }
+
+    /// 私信（Notes）收件箱
+    public static var notesInbox: URL { base.appendingPathComponent("/msg/pms/") }
+
+    public static var notesSent: URL { base.appendingPathComponent("/msg/pms/sent/") }
+
+    public static var notesCompose: URL { base.appendingPathComponent("/controls/notes/new/") }
+
+    /// 账号设置页（顺带用来取自己的用户名）
+    public static var controls: URL { base.appendingPathComponent("/controls/") }
+
+    /// 我的投稿（含统计）
+    public static func submissions(_ name: String, page: Int = 1) -> URL {
+        base.appendingPathComponent("/\(name)/submissions/\(page)/")
+    }
+
     // MARK: - 投稿
 
     public static func submission(_ id: Int) -> URL {

@@ -247,7 +247,7 @@ cp xtool/FAIOS.ipa /mnt/d/faios/build/
 | ~~**M0 基础设施**~~ ✅ | WSL+Swift+xtool 打通；SwiftPM 双包工程；`FAHTTP` + UA + 限流；`FAPages` 列表解析器 + 22 测试；端到端验证屏；`build/FAIOS.ipa` 2.27MB / minOS 15.0 | ~~3–4 天~~ 已完成 |
 | **M1 只读核心** | ✅ 首页 / 浏览 / 搜索 / 投稿详情 / 图片查看器 / 艺术家页；无限滚动；37 个 fixture 回归测试；**逐屏真机验收通过**（估 6–8 天，实际 1 天） | ~~6–8 天~~ 已完成 |
 | **M2 Cloudflare 与会话** | 常驻 WebView + ChallengeCoordinator + 登录 sheet + Keychain cookie + 挑战修复链路 | 4–5 天 |
-| **M3 账号功能** | 关注流、收藏、关注、通知、Notes | 4–5 天 |
+| **M3 账号功能** | 关注流 ✅、收藏 ✅、关注 ✅、评论（只读）✅、通知 ✅、我的收藏 ✅、Notes ⬜ | 4–5 天 |
 | **M4 阅读器** | 小说阅读器（txt/md 原生，docx/pdf 分级降级）、Journal 阅读器、进度记忆、离线 | 4–6 天 |
 | **M5 打磨发布** | 主题、空态/错误态、无障碍、性能、图标、TrollStore 打包 | 3–4 天 |
 | **合计** | | **24–32 人天** |

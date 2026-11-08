@@ -142,6 +142,21 @@ public struct FASubmissionsPage: Sendable {
                 if label == "Next" { next = url } else { prev = url }
             }
         }
+
+        // 关注流（`/msg/submissions/`）这类页面没有分页 form，用的是游标链接：
+        //   <a class="button standard more" href="/msg/submissions/new~66759279@48/">Next 48</a>
+        // 只有 form 一条都没找到时才走这里，避免把画廊页上无关的链接当成翻页。
+        if next == nil && prev == nil {
+            for anchor in (try? doc.select("a[href]").array()) ?? [] {
+                let label = ((try? anchor.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let isNext = label.hasPrefix("next") || label.hasPrefix("newer")
+                let isPrev = label.hasPrefix("prev") || label.hasPrefix("older") || label.hasPrefix("oldest")
+                guard isNext || isPrev else { continue }
+                let href = (try? anchor.attr("href")) ?? ""
+                guard !href.isEmpty, href != "#", let url = FAURLs.resolve(href, relativeTo: pageURL) else { continue }
+                if isNext { next = url } else { prev = prev ?? url }
+            }
+        }
         return (prev, next)
     }
 

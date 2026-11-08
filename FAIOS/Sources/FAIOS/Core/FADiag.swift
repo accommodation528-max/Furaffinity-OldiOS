@@ -65,30 +65,58 @@ enum FADiag {
     /// 背景：手动拷贝安装的 App 写 `Documents` 会报 `NSCocoaErrorDomain 513`（沙箱没给容器），
     /// 需要先找出到底哪里可写，才知道日志该落在哪。
     static func probeWritablePaths() -> String {
+        let report = writableDirectories().map { label, url, ok in
+            ok ? "\(label)=OK \(url.path)" : "\(label)=ERR"
+        }
+        return report.isEmpty ? "(no candidates)" : report.joined(separator: " ")
+    }
+
+    /// 挨个试写，返回 (标签, 目录, 是否可写)
+    static func writableDirectories() -> [(String, URL, Bool)] {
         var candidates: [(String, URL)] = []
         if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
             candidates.append(("Documents", docs))
         }
-        candidates.append(("tmp(NSTemporaryDirectory)", URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)))
+        candidates.append(("tmp", URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)))
         candidates.append(("home", URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)))
-        candidates.append(("Library/Caches", FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        candidates.append(("caches", FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: "/var/mobile/Library/Caches", isDirectory: true)))
         candidates.append(("var/tmp", URL(fileURLWithPath: "/var/tmp", isDirectory: true)))
         candidates.append(("var/mobile", URL(fileURLWithPath: "/var/mobile", isDirectory: true)))
+        candidates.append(("media", URL(fileURLWithPath: "/var/mobile/Media", isDirectory: true)))
         candidates.append(("prefs", URL(fileURLWithPath: "/var/mobile/Library/Preferences", isDirectory: true)))
 
-        var report: [String] = []
+        var results: [(String, URL, Bool)] = []
         for (label, dir) in candidates {
             let url = dir.appendingPathComponent("fa_probe.txt")
             do {
                 try Data("ok".utf8).write(to: url)
                 try? FileManager.default.removeItem(at: url)
-                report.append("\(label)=OK")
+                results.append((label, dir, true))
             } catch {
-                let ns = error as NSError
-                report.append("\(label)=ERR\(ns.code)")
+                results.append((label, dir, false))
             }
         }
-        return report.joined(separator: " ")
+        return results
+    }
+
+    /// 真机是唯一有登录态的机器：把几个「需要登录才看得到结构」的页面抓下来存到可写目录，
+    /// 再用 SSH 取回 PC，作为解析层的真实 fixture（离线就能写测试）。
+    static func exportPages(_ requests: [(String, URL)]) async -> String {
+        guard let target = writableDirectories().first(where: { $0.2 })?.1 else {
+            return "没有可写目录：\n" + probeWritablePaths()
+        }
+        var lines: [String] = ["目录 \(target.path)"]
+        for (name, url) in requests {
+            do {
+                let html = try await FAFetch.html(url)
+                let file = target.appendingPathComponent("fa_\(name).html")
+                try html.data(using: .utf8)?.write(to: file)
+                lines.append("\(name) ✓ \(html.utf8.count)B → \(file.lastPathComponent)")
+            } catch {
+                lines.append("\(name) ✗ \(error)")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 }

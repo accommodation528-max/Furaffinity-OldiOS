@@ -40,6 +40,30 @@ enum FAFetch {
             return try await FAHTTP.shared.fetchHTML(url)
         }
     }
+
+    /// 点一下 FA 页面上的按钮（收藏 / 关注 / 删除通知……）。
+    ///
+    /// 这类操作在 FA 上就是**一个带 token 的 GET 地址**：服务端处理完 302 回原页面，
+    /// URLSession 自动跟随，所以我们拿到的已经是「动作生效后」的页面 —— 直接用它确认结果，
+    /// 不用再额外请求一次。
+    ///
+    /// 遇到挑战时的顺序和 `html` 一样：先修再**恰好重试一次**。
+    @discardableResult
+    static func perform(_ url: URL) async throws -> String {
+        do {
+            let text = try await FAHTTP.shared.fetchHTML(url)
+            FADiag.record("ACTION \(url.path) → \(text.utf8.count)B")
+            return text
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch FAHTTP.FAHTTPError.challenge(let interactive) {
+            FADiag.record("ACTION-CHALLENGE \(url.path) interactive=\(interactive)")
+            await ChallengeGate.shared.recover(interactive: interactive)
+            let text = try await FAHTTP.shared.fetchHTML(url)
+            FADiag.record("ACTION-RETRY \(url.path) → \(text.utf8.count)B")
+            return text
+        }
+    }
 }
 
 /// Cloudflare 挑战的修复流程。顺序不能改：

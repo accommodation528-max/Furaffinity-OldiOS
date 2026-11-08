@@ -38,6 +38,7 @@ struct SubmissionScreen: View {
                     tagRow
                     description
                     stats
+                    commentsSection
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 16)
@@ -50,6 +51,19 @@ struct SubmissionScreen: View {
         }
         .navigationTitle(model.detail?.title ?? known?.title ?? "投稿")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if model.detail?.favoriteURL != nil {
+                    Button {
+                        Task { await model.toggleFavorite() }
+                    } label: {
+                        Image(systemName: model.favorited ? "heart.fill" : "heart")
+                            .foregroundColor(model.favorited ? .pink : .accentColor)
+                    }
+                    .disabled(model.favoriteBusy)
+                }
+            }
+        }
         .task(id: id) { await model.load(id: id) }
         .fullScreenCover(isPresented: $showViewer) {
             if let url = model.detail?.imageURL {
@@ -232,6 +246,25 @@ struct SubmissionScreen: View {
         .foregroundColor(.secondary)
     }
 
+    // MARK: - 评论
+
+    private var commentsSection: some View {
+        Group {
+            if !model.comments.isEmpty || model.commentsDisabled {
+                VStack(alignment: .leading, spacing: 12) {
+                    Divider().padding(.vertical, 2)
+
+                    Text(model.commentsDisabled ? "评论已关闭" : "评论 · \(model.comments.count)")
+                        .font(.subheadline).bold()
+
+                    ForEach(model.comments) { comment in
+                        CommentRow(comment: comment)
+                    }
+                }
+            }
+        }
+    }
+
     static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm"
@@ -242,8 +275,15 @@ struct SubmissionScreen: View {
 @MainActor
 final class SubmissionViewModel: ObservableObject {
     @Published private(set) var detail: FASubmissionDetail?
+    @Published private(set) var comments: [FAComment] = []
+    @Published private(set) var commentsDisabled = false
     @Published private(set) var isLoading = false
     @Published private(set) var errorText: String?
+
+    /// 收藏状态单独存一份：详情对象是值类型，重载一次才刷新，
+    /// 而按钮需要在点下去之后立刻变。
+    @Published private(set) var favorited = false
+    @Published private(set) var favoriteBusy = false
 
     private var loadedID: Int?
 
@@ -257,10 +297,87 @@ final class SubmissionViewModel: ObservableObject {
         let url = FAURLs.submission(id)
         do {
             let html = try await FAFetch.html(url)
-            detail = try FASubmissionDetail.parse(html, from: url)
+            let parsed = try FASubmissionDetail.parse(html, from: url)
+            detail = parsed
+            favorited = parsed.isFavorited
+            // 评论和详情同页，一次请求全解析出来，避免多一次往返（FA 限速是真的）
+            comments = (try? FAComments.parse(html, from: url)) ?? []
+            commentsDisabled = FAComments.areCommentsDisabled(in: html)
             loadedID = id
         } catch {
             errorText = FAErrorMessage.describe(error)
         }
+    }
+
+    /// 收藏 / 取消收藏。
+    ///
+    /// 收藏地址（带 token）就在详情页的按钮 href 上，GET 一下就切换。
+    /// 但**不能拿这个响应当结果**：FA 的 302 目标并不总是详情页（实测关注动作会跳到
+    /// 一个结构不同的页面，解析出来的作者名都是错的）。所以：先乐观地把界面翻过去，
+    /// 再老实重取一次详情页确认，不一致就翻回来并提示。
+    func toggleFavorite() async {
+        guard let detail, let actionURL = detail.favoriteURL, !favoriteBusy else { return }
+        favoriteBusy = true
+        defer { favoriteBusy = false }
+
+        let wanted = !favorited
+        let previous = favorited
+        favorited = wanted
+
+        do {
+            _ = try await FAFetch.perform(actionURL)
+            let url = FAURLs.submission(detail.id)
+            let page = try await FAFetch.html(url)
+            let fresh = try FASubmissionDetail.parse(page, from: url)
+            self.detail = fresh
+            favorited = fresh.isFavorited
+            if fresh.isFavorited != wanted {
+                favorited = previous
+                errorText = "收藏没生效（服务器可能限速了，稍后再试）"
+            } else {
+                errorText = nil
+            }
+        } catch {
+            favorited = previous
+            errorText = FAErrorMessage.describe(error)
+        }
+    }
+}
+
+/// 一条评论：头像 + 名字 + 时间 + 正文；回复按层级缩进。
+struct CommentRow: View {
+    let comment: FAComment
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Color.clear
+                .frame(width: 26, height: 26)
+                .overlay(RemoteImage(url: comment.avatarURL, contentMode: .fill))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(comment.authorName)
+                        .font(.caption).bold()
+                        .lineLimit(1)
+                    if let title = comment.title {
+                        Text(title)
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    if let posted = comment.postedAt {
+                        Text(FAFormat.relative(posted))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Text(comment.body)
+                    .font(.footnote)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.leading, CGFloat(min(comment.depth, 4)) * 18)
     }
 }

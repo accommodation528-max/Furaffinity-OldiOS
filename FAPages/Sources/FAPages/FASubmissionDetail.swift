@@ -33,6 +33,13 @@ public struct FASubmissionDetail: Sendable {
     public let musicURL: URL?
     public let downloadURL: URL?
 
+    /// 收藏动作：FA 把带 token 的收藏地址直接写在按钮的 href 上（文本 `+Fav` / `-Fav`），
+    /// GET 一下就能切换，不需要逆向表单。
+    public let favoriteURL: URL?
+    public let isFavorited: Bool
+    /// 「发私信」按钮指向的地址（`/newpm/{user}/`）
+    public let noteURL: URL?
+
     public let tags: [String]
     public let descriptionText: String
     public let descriptionHTML: String
@@ -50,6 +57,7 @@ public struct FASubmissionDetail: Sendable {
     public init(id: Int, url: URL, title: String, authorName: String, authorSlug: String,
                 authorURL: URL, authorAvatarURL: URL?, postedAt: Date?,
                 fullviewURL: URL?, previewURL: URL?, musicURL: URL?, downloadURL: URL?,
+                favoriteURL: URL? = nil, isFavorited: Bool = false, noteURL: URL? = nil,
                 tags: [String], descriptionText: String, descriptionHTML: String,
                 views: Int?, commentCount: Int?, favoriteCount: Int?,
                 attributes: [(String, String)], kind: FASubmissionKind, rating: FASubmissionRating) {
@@ -65,6 +73,9 @@ public struct FASubmissionDetail: Sendable {
         self.previewURL = previewURL
         self.musicURL = musicURL
         self.downloadURL = downloadURL
+        self.favoriteURL = favoriteURL
+        self.isFavorited = isFavorited
+        self.noteURL = noteURL
         self.tags = tags
         self.descriptionText = descriptionText
         self.descriptionHTML = descriptionHTML
@@ -150,6 +161,29 @@ public struct FASubmissionDetail: Sendable {
             }
         }
 
+        // 操作条：#submission-options 里的 +Fav / -Fav / Note
+        // 登录后才存在（未登录时这一条为空），所以缺失不算解析失败
+        var favoriteURL: URL?
+        var isFavorited = false
+        var noteURL: URL?
+        for anchor in (try? doc.select("#submission-options a[href]").array()) ?? [] {
+            let text = ((try? anchor.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let href = try? anchor.attr("href"),
+                  let url = FAURLs.resolve(href, relativeTo: pageURL) else { continue }
+            switch text {
+            case "+Fav":
+                favoriteURL = url
+                isFavorited = false
+            case "-Fav":
+                favoriteURL = url
+                isFavorited = true
+            case "Note":
+                noteURL = url
+            default:
+                break
+            }
+        }
+
         // 标签：.submission-tags 里指向 /search/@keywords 的链接
         var tags: [String] = []
         var seenTags = Set<String>()
@@ -220,6 +254,9 @@ public struct FASubmissionDetail: Sendable {
             previewURL: preview,
             musicURL: musicURL,
             downloadURL: downloadURL,
+            favoriteURL: favoriteURL,
+            isFavorited: isFavorited,
+            noteURL: noteURL,
             tags: tags,
             descriptionText: descriptionText,
             descriptionHTML: descriptionHTML,
