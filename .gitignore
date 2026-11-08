@@ -30,3 +30,6 @@ DerivedData/
 # 杂项
 .netrc
 *.log
+
+# 构建产物（ipa、递增的 build 号）
+build/
