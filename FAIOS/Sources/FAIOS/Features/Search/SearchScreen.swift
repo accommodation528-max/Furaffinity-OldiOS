@@ -150,19 +150,27 @@ struct FlowChips: View {
     }
 }
 
-/// 搜索历史：UserDefaults 里存一个数组，去重、最新的在前、上限 12 条
+/// 搜索历史：存一个数组，去重、最新的在前、上限 12 条。
+/// 走 `FAStore` 而不是 UserDefaults —— 这台机器上 UserDefaults 写不进磁盘。
+@MainActor
 enum SearchHistory {
     private static let key = "fa.searchHistory"
 
     static func load() -> [String] {
-        UserDefaults.standard.stringArray(forKey: key) ?? []
+        guard let raw = FAStore.string(key), let data = raw.data(using: .utf8),
+              let list = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return list
     }
 
     static func push(_ term: String) -> [String] {
         var list = load().filter { $0.caseInsensitiveCompare(term) != .orderedSame }
         list.insert(term, at: 0)
         if list.count > 12 { list = Array(list.prefix(12)) }
-        UserDefaults.standard.set(list, forKey: key)
+        if let data = try? JSONEncoder().encode(list), let raw = String(data: data, encoding: .utf8) {
+            FAStore.set(raw, for: key)
+        }
         return list
     }
 }

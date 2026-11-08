@@ -65,8 +65,24 @@ enum FAFetch {
         }
     }
 
-    /// 提交表单（发私信 / 回信 / 发评论）。
+    /// 取二进制（小说下载：txt / pdf / docx …）。
     ///
+    /// 走同一条车道与同一套挑战修复 —— 文本投稿的文件也在 Cloudflare 后面。
+    static func data(_ url: URL) async throws -> Data {
+        do {
+            let data = try await FAHTTP.shared.fetchData(url)
+            FADiag.record("GET(bin) \(url.lastPathComponent) → \(data.count)B")
+            return data
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch FAHTTP.FAHTTPError.challenge(let interactive) {
+            FADiag.record("BIN-CHALLENGE \(url.lastPathComponent) interactive=\(interactive)")
+            await ChallengeGate.shared.recover(interactive: interactive)
+            return try await FAHTTP.shared.fetchData(url)
+        }
+    }
+
+    /// 提交表单（发私信 / 回信 / 发评论）。
     /// 与 `perform` 的区别：这是 POST，字段里必须带页面上给出的 CSRF `key`；
     /// 挑战恢复顺序完全一样 —— 先修，再**恰好重试一次**。
     @discardableResult

@@ -102,6 +102,7 @@ struct AccountScreen: View {
     @ObservedObject private var account = FAAccountStore.shared
     @State private var checkMessage: String?
     @State private var imageStats: FAImageCache.Stats?
+    @State private var storeMessage: String?
 
     var body: some View {
         List {
@@ -187,6 +188,34 @@ struct AccountScreen: View {
                         Image(systemName: "square.and.arrow.up.on.square")
                         Text("导出页面快照（调试）")
                     }
+                }
+
+                // 调试用：一条 .txt 故事（正文是 BBCode 的那种），用来验证阅读器
+                NavigationLink(destination: SubmissionScreen(id: 66961612)) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "book")
+                        Text("打开故事样本（调试）")
+                    }
+                }
+
+                // 调试用：设置到底写没写进磁盘（这台机器上 UserDefaults 是假的）
+                Button {
+                    storeMessage = FAStore.filePath.map { path in
+                        let error = FAStore.lastWriteError.map { "｜写盘错误：\($0)" } ?? "｜写盘 OK"
+                        return "设置：\(path)\(error)"
+                    } ?? "设置：找不到可写目录（只存在内存里）"
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "externaldrive")
+                        Text("设置存储位置（调试）")
+                    }
+                }
+
+                if let storeMessage {
+                    Text(storeMessage)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if let message = checkMessage {

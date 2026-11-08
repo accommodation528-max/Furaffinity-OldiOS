@@ -19,7 +19,7 @@ final class FAAccountStore: ObservableObject {
     private var loadedOnce = false
 
     private init() {
-        slug = UserDefaults.standard.string(forKey: Self.defaultsKey)
+        slug = FAStore.string(Self.defaultsKey)
     }
 
     private static let defaultsKey = "fa.account.slug"
@@ -49,13 +49,13 @@ final class FAAccountStore: ObservableObject {
     func setSlug(_ value: String) {
         guard !value.isEmpty else { return }
         slug = value
-        UserDefaults.standard.set(value, forKey: Self.defaultsKey)
+        FAStore.set(value, for: Self.defaultsKey)
     }
 
     func clear() {
         slug = nil
         loadedOnce = false
-        UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
+        FAStore.remove(Self.defaultsKey)
     }
 
     /// 我的收藏页地址；还不知道自己是谁的时候返回 nil（界面据此藏掉入口）

@@ -73,13 +73,13 @@ final class ContentFilter: ObservableObject {
     @Published var mode: Mode {
         didSet {
             guard mode != oldValue else { return }
-            UserDefaults.standard.set(mode.rawValue, forKey: Self.storageKey)
+            FAStore.set(mode.rawValue, for: Self.storageKey)
             NotificationCenter.default.post(name: .faiosContentModeDidChange, object: nil)
         }
     }
 
     private init() {
-        let saved = UserDefaults.standard.string(forKey: Self.storageKey)
+        let saved = FAStore.string(Self.storageKey)
         mode = saved.flatMap(Mode.init(rawValue:)) ?? .all
     }
 

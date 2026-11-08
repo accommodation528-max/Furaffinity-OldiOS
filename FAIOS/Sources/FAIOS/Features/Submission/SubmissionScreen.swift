@@ -160,6 +160,31 @@ struct SubmissionScreen: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+
+                // 故事（.text）正文不在页面里，只有一个下载链接 —— 给条显眼的入口
+                if detail.kind == .text || detail.downloadURL != nil {
+                    NavigationLink(destination: StoryScreen(detail: detail)) {
+                        HStack(spacing: 9) {
+                            Image(systemName: detail.storyFormat?.isNativelyReadable == true ? "book" : "arrow.down.doc")
+                            Text(detail.storyFormat?.isNativelyReadable == true ? "阅读这篇" : "下载 / 打开")
+                                .fontWeight(.semibold)
+                            Spacer()
+                            if let format = detail.storyFormat {
+                                Text(format.displayName)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(Color.orange.opacity(0.14))
+                        .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                }
             } else if let known {
                 Text(known.title).font(.title3).bold()
                 Text("by \(known.authorName)").font(.subheadline).foregroundColor(.secondary)

@@ -101,7 +101,7 @@ ios_use_control tap   # x/y 归一化 0..1
 | M2 Cloudflare 与会话 | ✅ 应用内 WKWebView 登录（密码不经过 App）、cookie 存 Keychain、**重启进程与重启手机后登录态仍在**；登录态自检与挑战修复链路已接 |
 | **内容分级（SFW 开关）** | ✅ 「我的 → 内容分级」：全部 / 隐藏 Adult / 只看 General；列表过滤 + 缩略图 `M` / `18+` 角标 + 详情页遮罩。真机验收：首页 112 → 70 条 |
 | M3 账号功能 | ✅ 收藏 / 关注 / 评论（只读）/ 通知 / 关注流 / 我的收藏 / **Notes（私信）**，全部真机验收；55 个单测 |
-| M4 阅读器 | 🟡 Journal 阅读器 ✅（标题/作者/时间/分级/正文/评论）；小说阅读器 ⬜；进度记忆 ⬜ |
+| **M4 阅读器** | ✅ Journal 阅读器（标题/作者/时间/分级/正文/评论）+ **小说阅读器**：BBCode 排版的正文、字号/行距可调、**退出重进回到上次位置**、PDF 走 PDFKit、docx/rtf 交给系统打开。真机验收（22,372 字德语故事） |
 | **性能与图片缓存** | ✅ 两级缓存（内存 400 张 / 96MB + 磁盘 320MB）+ ImageIO 解码期降采样 + 静态资源独立车道。真机实测：重进页面 **省 53~59% 网络**，一屏 12 张出图时间从 4.2s 的量级降到 ~1s |
 | M5 打磨 | ⬜ 主题 / 无障碍 / 图标 |
 
@@ -121,6 +121,13 @@ ios_use_control tap   # x/y 归一化 0..1
 - **`uiopen` 在 SSH 里是空操作**（对所有 App 都不启动，rc 却是 0），启动要用 ios-use 的 agent
 - **极端宽高比会撑爆网格**：1:8 的长条漫画把整行拉到上千点高，显示比例要夹在 0.62~1.7
 - **`UIScrollView` 的布局别挂在 `updateUIView`**：那时 bounds 常还是 0，图片会按原始像素铺开（真机表现：只看到图的一个角）
+- **FA 的「小说」正文根本不在页面里**：`.text` 投稿只有一个 `Download` 链接，而且 `.txt` 文件内容是 **BBCode**（`[center]`/`[b]`/`[color=#c13d59]`/`[h1]`），
+  有的还带 UTF-8 BOM 和 CRLF —— 直接当纯文本读会满屏方括号
+- **这台机器上的 `UserDefaults` 是假的**：手动 `cp -R` 装的 .app 沙箱容器没初始化，`Documents` / `Library/Caches` / `Library/Preferences`
+  全部不可写（`NSCocoaErrorDomain 513`），`UserDefaults` 写完全静默丢弃 → 所有设置一关 App 就回默认值。
+  现在统一走 `FAStore`（自找可写目录写 JSON，实测落在 `/var/tmp/FAIOS/settings.json`）
+- **`onChange(of:)` 等不到「内容视图出现」这件事**：视图是在数据就绪后才插进层级的，那时 `count` 早就不是 0 了，
+  回调永远不来（阅读进度曾因此一条都存不下）——要挂在 `.onAppear`
 - **`a` / `b` 是会话对，必须一起更新**：网页里 FA 会轮换 `b` 并清掉 `a`，无脑逐条吸收会存成「旧 a + 新 b」的混合体，
   服务端判定无效 → App 显示已登录、所有请求却按访客返回 Login Required（这个坑排查了很久，见 `FACookieStore.absorb`）
 - **ad-hoc 签名默认没有 entitlements**：`ldid -e <binary>` 输出为空 → Keychain 写入静默失败（`-34018`），
