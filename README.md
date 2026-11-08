@@ -71,18 +71,31 @@ bash scripts/build.sh        # 一条命令：编译 + 补 Info.plist + 拷到 b
 
 测试机：**iPhone 7 Plus（iPhone9,2）/ iOS 15.8.3 / Dopamine rootless 越狱 / SSH 开着**。
 
-一条命令（走局域网 SSH，不需要 Mac / Apple ID / 数据线）：
+**首选**（走 installd，App 有真实沙箱容器 + 桌面能显示自定义图标）：
+
+```bash
+bash scripts/install-trollstore.sh
+```
+
+它做的事：推 ipa 到 `/var/mobile/Media` → `trollstorehelper uninstall` → **`trollstorehelper install`** → `uicache -a`。
+
+> 必须先卸载：`trollstorehelper install` 在「已安装」状态下会返回 **179**（force 参数返回 **166**），
+> 都是装不进去的意思。卸载之后同一条命令返回 **0**，装到
+> `/private/var/containers/Bundle/Application/<UUID>/FAIOS.app`。
+
+备选（更快，但**没有数据容器**）：
 
 ```bash
 bash scripts/install-device.sh
 ```
 
-它做的事：推 ipa → 手机端解包 → `ldid -S` 重签 → 放进 `/var/jb/Applications` → `uicache -a` 注册。
+推 ipa → 手机端解包 → `ldid -S` 重签 → 放进 `/var/jb/Applications` → `uicache -a`。
 
-> 为什么不用 TrollStore 装？rootless 越狱机直接往 `/var/jb/Applications` 放 .app 更快，
-> 而且不用点手机上的任何界面。**未越狱**设备才需要 TrollStore / AltStore。
+> 这条路装出来的 App：`Documents` / `Library/Caches` / `Library/Preferences` 全部不可写，
+> `UserDefaults` 写完全静默丢弃（见下面的坑），桌面上也只会是系统的网格占位图。
+> 好处是不用卸载、不用点手机界面，迭代最快 —— 调试界面时够用。
 
-手动机装（TrollStore 路线）：把 `build/FAIOS.ipa` 传到手机 → 点它 → 分享 → TrollStore。
+两条路都会**清空 App 数据**（新容器），所以装完要重新登录一次。
 
 ---
 
@@ -134,7 +147,8 @@ ios_use_control tap   # x/y 归一化 0..1
   有的还带 UTF-8 BOM 和 CRLF —— 直接当纯文本读会满屏方括号
 - **这台机器上的 `UserDefaults` 是假的**：手动 `cp -R` 装的 .app 沙箱容器没初始化，`Documents` / `Library/Caches` / `Library/Preferences`
   全部不可写（`NSCocoaErrorDomain 513`），`UserDefaults` 写完全静默丢弃 → 所有设置一关 App 就回默认值。
-  现在统一走 `FAStore`（自找可写目录写 JSON，实测落在 `/var/tmp/FAIOS/settings.json`）
+  现在统一走 `FAStore`（自找可写目录写 JSON）。**换 TrollStore 安装后容器是真的**，
+  `FAStore` 会优先进 `Documents/FAIOS/settings.json`（屏幕上的「设置存储位置」会显示真实路径）
 - **`onChange(of:)` 等不到「内容视图出现」这件事**：视图是在数据就绪后才插进层级的，那时 `count` 早就不是 0 了，
   回调永远不来（阅读进度曾因此一条都存不下）——要挂在 `.onAppear`
 - **`a` / `b` 是会话对，必须一起更新**：网页里 FA 会轮换 `b` 并清掉 `a`，无脑逐条吸收会存成「旧 a + 新 b」的混合体，
@@ -166,7 +180,11 @@ ios_use_control tap   # x/y 归一化 0..1
   所以每次构建都自动涨一个 build 号（「我的 → 关于 → 版本」能直接看到）
 - **手动 `cp -R` 装进 `/var/jb/Applications` 的 App 在这个越狱环境里拿不到自定义图标**：
   Spotlight 与桌面仍是系统的网格占位图（同一路径下所有手装 App 都一样）。
-  想看到图标得走 TrollStore / 正常签名安装；`trollstorehelper install` 在这台机器上返回 179/166，未通过
+  改用 `scripts/install-trollstore.sh`（走 installd）后图标立刻正常，**并且**顺带解决了容器不可写的问题
+- **`trollstorehelper install` 的返回码会骗人**：已安装时返回 179、带 force 参数返回 166，
+  只有「先 `uninstall` 再 `install`」才返回 0；不 `uninstall` 的话新包根本进不去
+- **装了 TrollStore 版之后 `Documents/diag.log` 又能写了**：沙箱容器是真的，
+  于是「真机没有控制台、只能把日志画到屏幕上」这条约束可以退休（`FADiag` 仍然保留，两条通道都在）
 - **音乐投稿的 `<audio src>` 不能直接丢给 `AVAudioPlayer`**：那个直链同样要过 Cloudflare 与 cookie，
   `AVPlayer(url:)` 不带我们的请求头，结果是静默失败。必须先 `FAFetch.data` 下载到本地再从文件播
 - **需要登录的页面只能从手机上取**：开发机（WSL）没有 cookie，
