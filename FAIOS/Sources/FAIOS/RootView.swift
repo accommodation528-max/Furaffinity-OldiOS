@@ -49,6 +49,12 @@ struct RootView: View {
             // 冷启动先把 Keychain 里的会话注回 WKWebView —— 否则 WebView 是未登录身份，
             // 「续 Cloudflare 信任」用的就是访客，白跑一趟。
             Task {
+                // 先回答「这个进程能不能上网」——重装/换签名后如果网络被系统挡住，
+                // 后面所有请求都会变成 30 秒超时，表面上看不出原因。
+                if let probeURL = URL(string: "https://www.furaffinity.net/robots.txt") {
+                    let result = await FAHTTP.shared.probe(probeURL)
+                    FADiag.record(result)
+                }
                 await FAWebCookieBridge.injectStoredCookies()
                 // 让出一段时间再跑预热：首页首屏要抢带宽，冷启动时 WebView 同步加载
                 // FA 首页（100+ KB + 一堆图标）会把第一屏图片挤在后面。
@@ -109,6 +115,39 @@ struct AccountScreen: View {
     @State private var storeMessage: String?
     /// 开发者工具默认收起（日常用不到，展开才有噪音）
     @State private var showDiagnostics = false
+    @State private var proxyText: String = UserDefaults.standard.string(forKey: FAHTTP.proxyStoreKey) ?? ""
+    @State private var netProbeResult: String = ""
+
+    private func saveProxy() {
+        let spec = proxyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // iOS 的 NSURLSession 不认 connectionProxyDictionary 里的 SOCKS 键：
+        // 实测填 socks://127.0.0.1:1080 后所有请求立刻报 "The Internet connection
+        // appears to be offline."。所以这里只接受 HTTP 代理，SOCKS 直接挡住并解释。
+        if spec.lowercased().hasPrefix("socks") {
+            netProbeResult = "iOS 不支持 SOCKS 代理（实测会报「网络已断开」）。请改用代理 App 的系统级代理，或填它的 HTTP 端口，比如 127.0.0.1:7890。"
+            return
+        }
+        Task {
+            await FAHTTP.shared.setProxy(spec.isEmpty ? nil : spec)
+            let applied = await FAHTTP.shared.currentProxySpec() ?? "直连"
+            netProbeResult = "已应用：\(applied)"
+            NotificationCenter.default.post(name: .faiosContentModeDidChange, object: nil)
+        }
+    }
+
+    private func runNetProbe() {
+        netProbeResult = "测量中…"
+        Task {
+            let result: String
+            if let url = URL(string: "https://www.furaffinity.net/robots.txt") {
+                result = await FAHTTP.shared.probe(url)
+            } else {
+                result = "URL 无效"
+            }
+            FADiag.record(result)
+            netProbeResult = result
+        }
+    }
 
     var body: some View {
         List {
@@ -346,6 +385,43 @@ struct AccountScreen: View {
                 Text("内容")
             } footer: {
                 Text("列表里按投稿的分级过滤：General 全年龄、Mature 成人向、Adult 露骨。切换后首页/浏览/搜索/画廊会重新拉取。")
+            }
+
+            Section {
+                HStack(spacing: 10) {
+                    Image(systemName: "network")
+                    TextField("HTTP 代理 host:port（留空=直连）", text: $proxyText)
+                        .textInputAutocapitalization(.never)
+                        .disableAutocorrection(true)
+                        .keyboardType(.URL)
+                        .font(.body.monospaced())
+                }
+                Button {
+                    saveProxy()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle")
+                        Text("保存并重建连接")
+                    }
+                }
+                Button {
+                    runNetProbe()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "waveform.path.ecg")
+                        Text("网络自检")
+                    }
+                }
+                if !netProbeResult.isEmpty {
+                    Text(netProbeResult)
+                        .font(.caption.monospaced())
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                }
+            } header: {
+                Text("网络")
+            } footer: {
+                Text("FA 的域名在这台机器所在网络里可能被 DNS 污染（实测解析到 173.252.248.244，那是 Facebook 的地址），直连必然超时。两个办法：①打开手机上的代理 App（系统级 VPN，最省事，WKWebView 也跟着走）②在手机上跑着 HTTP 代理时，把它的端口填进来（本机填 127.0.0.1:端口，电脑上的 Clash 填 电脑IP:7890 并打开 Allow LAN）。注意：iOS 不支持 SOCKS 代理；网页登录用的 WKWebView 不读这个设置，它跟随系统代理。")
             }
 
             Section("关于") {

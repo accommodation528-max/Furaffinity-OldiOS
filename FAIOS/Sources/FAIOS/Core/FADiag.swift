@@ -13,6 +13,11 @@ enum FADiag {
     }()
 
     static var logURL: URL {
+        // 优先用 FAWritableDirectory 探过的目录：手动 cp -R 安装的 App 拿不到沙箱容器，
+        // DocumentDirectory 不可写，日志会静默消失（排查网络问题时就吃过这个亏）。
+        if let dir = FAWritableDirectory.directory("logs") {
+            return dir.appendingPathComponent("diag.log")
+        }
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return base.appendingPathComponent("diag.log")

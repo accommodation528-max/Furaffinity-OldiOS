@@ -73,9 +73,84 @@ public actor FAHTTP {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
+        let proxy = FAHTTP.readProxySpec()
+        FAHTTP.applyProxy(proxy, to: config)
         self.config = config
         self.session = URLSession(configuration: config)
+        self.proxySpec = proxy
     }
+
+    /// 当前生效的代理（"host:port"）。空 = 直连。
+    private var proxySpec: String?
+
+    /// 代理设置存在 UserDefaults（非隔离、init 里就能读）。
+    /// 注意：手动 cp -R 安装时 UserDefaults 不可靠（见 FAStore 的注释），
+    /// 但 TrollStore 正规安装后它是真的；这只是一条「网络出口」配置，丢了重填即可。
+    public nonisolated static let proxyStoreKey = "fa.net.proxy"
+
+    public nonisolated static func readProxySpec() -> String? {
+        guard let raw = UserDefaults.standard.string(forKey: proxyStoreKey)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        return raw
+    }
+
+    /// 把 "host:port" 变成 URLSession 能用的代理字典。
+    ///
+    /// 为什么要有这个开关：FA 的域名在这台机器所处的网络里会被 DNS 污染成
+    /// 173.252.248.244（Facebook 的 IP），直连必然超时。手机上的代理 App 通常只对
+    /// 「系统流量」生效，而我们要能单独把 App 的请求指到某个 HTTP 代理（如 PC 上的 Clash 7890）。
+    nonisolated static func applyProxy(_ spec: String?, to config: URLSessionConfiguration) {
+        guard let spec, !spec.isEmpty else {
+            config.connectionProxyDictionary = nil
+            return
+        }
+        // 支持三种写法：
+        //   host:port            → HTTP/HTTPS 代理（Clash 的 mixed-port 就是这种）
+        //   http://host:port     → 同上，显式写法
+        //   socks://host:port    → SOCKS5（Surge/Quantumult 之类的本地端口常见 1080）
+        var body = spec
+        var isSOCKS = false
+        for prefix in ["socks5://", "socks://", "http://", "https://"] where body.lowercased().hasPrefix(prefix) {
+            isSOCKS = prefix.hasPrefix("socks")
+            body = String(body.dropFirst(prefix.count))
+            break
+        }
+        let parts = body.split(separator: ":")
+        guard parts.count == 2, let port = Int(parts[1]) else {
+            config.connectionProxyDictionary = nil
+            return
+        }
+        let host = String(parts[0])
+        if isSOCKS {
+            config.connectionProxyDictionary = [
+                "SOCKSEnable": 1,
+                "SOCKSProxy": host,
+                "SOCKSPort": port,
+                "SOCKSVersion": 5,
+            ]
+        } else {
+            config.connectionProxyDictionary = [
+                "HTTPEnable": 1,
+                "HTTPProxy": host,
+                "HTTPPort": port,
+                "HTTPSEnable": 1,
+                "HTTPSProxy": host,
+                "HTTPSPort": port,
+            ]
+        }
+    }
+
+    /// 运行时改代理：重建 session（URLSession 的代理配置不能热改）。
+    public func setProxy(_ spec: String?) {
+        let normalized = (spec?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) ? nil : spec
+        UserDefaults.standard.set(normalized, forKey: FAHTTP.proxyStoreKey)
+        FAHTTP.applyProxy(normalized, to: config)
+        proxySpec = normalized
+        session.invalidateAndCancel()
+        session = URLSession(configuration: config)
+    }
+
+    public func currentProxySpec() -> String? { proxySpec }
 
     /// 丢掉连接池里现存的连接（挑战修复用）。
     ///
@@ -143,6 +218,73 @@ public actor FAHTTP {
         }
     }
 
+    /// 裸网络探针：**不经过**信号量、cookie、UA 定制，直接用新的 URLSession 打几个最小请求。
+    ///
+    /// 为什么需要：TrollStore 重装后出现过「所有请求都超时」，
+    /// 分不清是「App 根本没有网络」还是「我们的车道/会话被卡住」。
+    /// 这个探针只回答一个问题：这台机器上，这个进程能不能发出 HTTPS 请求。
+    /// 会同时试 `URLSession.shared` 与 ephemeral，并换一个域名做对照 ——
+    /// 三个结果放在一起就能把「网络被挡住」「某个配置有问题」「只有 FA 不通」区分开。
+    public func probe(_ url: URL) async -> String {
+        var lines: [String] = []
+
+        func attempt(_ label: String, _ target: URL, _ configuration: URLSessionConfiguration?) async {
+            let began = Date()
+            let s: URLSession
+            if let configuration {
+                s = URLSession(configuration: configuration)
+            } else {
+                s = URLSession.shared
+            }
+            do {
+                let (data, response) = try await s.data(from: target)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                lines.append("PROBE \(label) ok status=\(status) \(data.count)B \(Int(Date().timeIntervalSince(began) * 1000))ms")
+            } catch {
+                lines.append("PROBE \(label) fail \(Int(Date().timeIntervalSince(began) * 1000))ms \(error.localizedDescription)")
+            }
+            if configuration != nil { s.invalidateAndCancel() }
+        }
+
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 10
+        await attempt("shared/fa", url, nil)
+        await attempt("ephemeral/fa", url, cfg)
+        if let control = URL(string: "https://example.com/") {
+            let cfg2 = URLSessionConfiguration.ephemeral
+            cfg2.timeoutIntervalForRequest = 10
+            await attempt("shared/control", control, nil)
+            await attempt("ephemeral/control", control, cfg2)
+        }
+        let controlHost = "https://example.com/"
+        lines.append("DNS " + Self.describeResolution(for: url) + " / " + (URL(string: controlHost).map(Self.describeResolution(for:)) ?? "?"))
+        return lines.joined(separator: " | ")
+    }
+
+    /// 把域名解析成 IPv4，用来判断「是不是被 DNS 劫持到了 198.18.x.x 这种假 IP」。
+    /// 真机排查过一次「只有 FA 不通、别的站都好」，先看解析结果比猜网络栈快得多。
+    private nonisolated static func describeResolution(for url: URL) -> String {
+        guard let host = url.host else { return "?" }
+        var hints = addrinfo(ai_flags: 0, ai_family: AF_INET, ai_socktype: SOCK_STREAM,
+                             ai_protocol: 0, ai_addrlen: 0, ai_canonname: nil, ai_addr: nil, ai_next: nil)
+        var result: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &result) == 0, let first = result else {
+            return "\(host)=resolve-failed"
+        }
+        defer { freeaddrinfo(result) }
+        var ips: [String] = []
+        var node: UnsafeMutablePointer<addrinfo>? = first
+        while let current = node, ips.count < 3 {
+            var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            var address = current.pointee.ai_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr }
+            if inet_ntop(AF_INET, &address, &buffer, socklen_t(INET_ADDRSTRLEN)) != nil {
+                ips.append(String(cString: buffer))
+            }
+            node = current.pointee.ai_next
+        }
+        return "\(host)=\(ips.joined(separator: ","))"
+    }
+
     // MARK: - 单次请求
 
     private enum Lane {
@@ -160,6 +302,8 @@ public actor FAHTTP {
 
     private func performOnce(_ url: URL, method: String = "GET", body: Data? = nil) async throws -> Data {
         let lane = Self.lane(for: url)
+        let began = Date()
+        FADiag.record("REQ  \(method) \(url.path) lane=\(lane == .asset ? "asset" : "page")")
         if lane == .asset {
             await assetGate.acquire()
         } else {
@@ -170,6 +314,7 @@ public actor FAHTTP {
                 if lane == .asset { await assetGate.release() } else { await pageGate.release() }
             }
         }
+        FADiag.record("GATE \(url.path) waited=\(Int(Date().timeIntervalSince(began) * 1000))ms")
 
         await waitForSpacing(lane)
 
@@ -188,8 +333,10 @@ public actor FAHTTP {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
+            FADiag.record("ERR  \(url.path) after=\(Int(Date().timeIntervalSince(began) * 1000))ms \(error.localizedDescription)")
             throw FAHTTPError.transport(error)
         }
+        FADiag.record("RES  \(url.path) \(data.count)B total=\(Int(Date().timeIntervalSince(began) * 1000))ms")
 
         guard let http = response as? HTTPURLResponse else {
             throw FAHTTPError.http(-1)

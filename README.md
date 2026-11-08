@@ -125,7 +125,7 @@ ios_use_control tap   # x/y 归一化 0..1
 | **M4 阅读器** | ✅ Journal 阅读器（标题/作者/时间/分级/正文/评论）+ **小说阅读器**：BBCode 排版的正文、字号/行距可调、**退出重进回到上次位置**、PDF 走 PDFKit、docx/rtf 交给系统打开。真机验收（22,372 字德语故事） |
 | **性能与图片缓存** | ✅ 两级缓存（内存 400 张 / 96MB + 磁盘 320MB）+ ImageIO 解码期降采样 + 静态资源独立车道。真机实测：重进页面 **省 53~59% 网络**，一屏 12 张出图时间从 4.2s 的量级降到 ~1s |
 | **音乐播放器** | ✅ 详情页播放卡片（封面/进度/时间）+ 全局迷你播放条（切 tab 继续控制）+ 锁屏与控制中心（`MPRemoteCommandCenter`）+ 后台播放（补了 `UIBackgroundModes: [audio]`）。音频先下载再播 —— 直链要过 Cloudflare 与 cookie |
-| **M5 打磨** | 🟡 已完成：诊断项收进「诊断」折叠区、版本号自动递增、App 图标（脚本生成）。待做：深/浅色主题细节、无障碍标签 |
+| **M5 打磨** | 🟡 已完成：诊断项收进「诊断」折叠区、版本号自动递增、App 图标（脚本生成）、**网络诊断与代理设置**。待做：深/浅色主题细节、无障碍标签 |
 
 ### 已知的坑（都已写进代码注释）
 
@@ -203,3 +203,12 @@ ios_use_control tap   # x/y 归一化 0..1
   （实测 `didCommit` 时表单还没长出来，主题和正文是空的 → 提交必然失败）
 - **FA 拒绝给自己发私信**（`You cannot send notes to yourself`）。这反而是最好的验证：能走到这句错误，
   就说明 cookie、Turnstile、表单提交、结果解析**全都对了**，只差一个真实收信人
+- **「所有请求超时」先查 DNS，别怀疑代码**：这台机器所在网络把 `www.furaffinity.net` 解析成
+  `173.252.248.244`（Facebook 的地址），而 `example.com` 正常 1.2 秒 200 —— 症状是首页永远转圈、
+  日志里只有 `HEALTH start` 没有任何 `GET` 完成行。诊断命令在 App 里：「我的 → 网络」的「网络自检」
+  （会打印四路对照 + DNS 解析结果到屏幕和 `diag.log`）
+- **iOS 的 `NSURLSession` 不认 `connectionProxyDictionary` 里的 SOCKS 键**：填 `socks://127.0.0.1:1080`
+  后所有请求立刻报 `The Internet connection appears to be offline.`。只支持 HTTP/HTTPS 代理；
+  SOCKS 只能靠系统级代理 App（VPN 模式）
+- **`connectionProxyDictionary` 只作用于我们的 `URLSession`**：`WKWebView`（登录页、发私信页）走系统网络栈，
+  不读这个设置 —— 这两个场景必须让代理 App 在系统层生效
