@@ -54,10 +54,10 @@ struct UserScreen: View {
             blocklistDirty = true
         }
         .onAppear {
-            if blocklistDirty {
-                blocklistDirty = false
-                model.applyBlocklist()
-            }
+            guard blocklistDirty else { return }
+            blocklistDirty = false
+            // 重拉而不是就地摘行：摘行之后删词是回不来的
+            Task { await model.reloadGallery() }
         }
     }
 

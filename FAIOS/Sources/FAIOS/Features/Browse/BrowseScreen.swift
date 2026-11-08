@@ -74,15 +74,17 @@ struct BrowseScreen: View {
         }
         // 屏蔽词：**不要**在通知里立刻过滤。
         // iOS 15 的 NavigationLink 把列表行当数据源，行一旦消失，正停在详情页的用户会被直接弹回列表。
-        // 所以只记一个「脏」标记，等用户自己回到列表（onAppear）时再摘。
+        // 所以只记一个「脏」标记，等用户自己回到列表（onAppear）时再重拉。
+        //
+        // 这里用 reload 而不是就地摘行：摘行只能让命中的消失，**删词之后回不来**
+        // （行已经从 submissions 里删掉了）。重拉两头都对，代价只是一次列表请求。
         .onReceive(NotificationCenter.default.publisher(for: .faiosBlocklistDidChange)) { _ in
             blocklistDirty = true
         }
         .onAppear {
-            if blocklistDirty {
-                blocklistDirty = false
-                model.applyBlocklist()
-            }
+            guard blocklistDirty else { return }
+            blocklistDirty = false
+            Task { await model.reload() }
         }
         // 批量下载：只能下已经加载到本地的那些（列表页没有原图地址）
         .toolbar {
