@@ -52,6 +52,16 @@ FAIOS 是**非官方**第三方客户端，与 Fur Affinity（Frost Dragon Art L
 - **[SwiftSoup](https://github.com/scinfu/SwiftSoup)**（MIT）—— 以源码方式放在 `Vendor/`，
   避免构建期联网。其 LICENSE 一并保留在 `Vendor/SwiftSoup/LICENSE`。
 
+## 测试用页面快照
+
+`FAPages/Tests/FAPagesTests/Fixtures/` 下的 `.html` 是**解析层回归测试用的页面快照**：
+它们是从 furaffinity.net 抓下来（或按真实结构重写）的页面副本，权利归
+Frost Dragon Art LLC 与各投稿作者所有，**不在本仓库 MIT 许可范围内**。
+
+它们存在的唯一目的是让「站点改版导致解析失效」这件事在 CI 里可见（`swift test`），
+不是作为内容再分发。若你是权利人希望移除其中某一份，开一个 issue，会直接删掉对应文件
+（相关测试随之改用内联片段）。
+
 ## 工具链
 
 - **[xtool](https://github.com/xtool-org/xtool)** —— 在 Linux / Windows(WSL) 上完成
