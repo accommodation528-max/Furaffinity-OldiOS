@@ -2,6 +2,9 @@
 
 FurAffinity 的第三方 iOS 客户端 —— **SwiftUI，最低 iOS 15，无需 Mac**。
 
+> 非官方项目，与 Fur Affinity（Frost Dragon Art LLC）无隶属关系。
+> 参考过的项目、第三方库与授权范围见 [NOTICE.md](NOTICE.md)，代码以 [MIT](LICENSE) 发布。
+
 规划见 [docs/PLAN.md](docs/PLAN.md)。
 
 ---
@@ -246,3 +249,23 @@ ios_use_control tap   # x/y 归一化 0..1
   `Documents/FAIOS` 再装、装完恢复 —— 否则每次升级都丢设置、丢下载、丢阅读进度
 - **iOS 15 的 `ToolbarContentBuilder` 不支持 `if`**：条件插 `ToolbarItem` 报
   `'buildIf' is only available in iOS 16.0 or newer`，改成「一直挂着 + 空态时 opacity 0 且 disabled」
+
+---
+
+## 参考与授权
+
+- 参考项目：**[Ceylo/FurAffinityApp](https://github.com/Ceylo/FurAffinityApp)**（无 LICENSE）
+  —— 只参考了架构分层、FA 页面选择器的事实性信息、以及 Cloudflare 挑战的处理经验，
+  **没有复制其代码，也没有把它的文件放进本仓库**
+- 本仓库代码：[MIT](LICENSE)。`FAPages/Tests/FAPagesTests/Fixtures/` 里的 HTML 是
+  furaffinity.net 的页面快照，版权归 FA / 对应作者，仅作解析器回归测试
+- 非官方项目，与 Fur Affinity 无隶属关系；详细声明见 [NOTICE.md](NOTICE.md)
+
+## 测试
+
+```bash
+cd FAPages && swift test      # 74 个单测，Linux 上直接跑（不需要 macOS / 模拟器）
+```
+
+解析层的每个选择器都由 `Fixtures/` 里的真实页面快照兜着 —— FA 改版时先跑测试，
+失败的用例会直接指出是「列表页」「详情页」「用户页」「私信」「小说」哪一块变了。
