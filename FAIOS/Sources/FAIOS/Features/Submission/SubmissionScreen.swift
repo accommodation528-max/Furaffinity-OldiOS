@@ -11,11 +11,19 @@ struct SubmissionScreen: View {
     @StateObject private var model = SubmissionViewModel()
     @State private var imageRatio: CGFloat?
     @State private var showViewer = false
+    /// 被分级过滤挡下时，用户可以选择「这次就看」
+    @State private var revealed = false
 
     private var ratio: CGFloat {
         if let detailRatio = model.detail?.imageURL == nil ? nil : imageRatio { return detailRatio }
         if let known, known.aspectRatio > 0 { return CGFloat(known.aspectRatio) }
         return 4.0 / 3.0
+    }
+
+    /// 当前分级设置是否允许看这条投稿（列表层已经过滤过，这里兜住深链进来的情况）
+    private var blockedRating: FASubmissionRating? {
+        guard let rating = model.detail?.rating ?? known?.rating else { return nil }
+        return ContentFilter.shared.allows(rating) ? nil : rating
     }
 
     var body: some View {
@@ -34,6 +42,11 @@ struct SubmissionScreen: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 16)
             }
+            .overlay {
+                if let rating = blockedRating, !revealed {
+                    ratingCover(rating)
+                }
+            }
         }
         .navigationTitle(model.detail?.title ?? known?.title ?? "投稿")
         .navigationBarTitleDisplayMode(.inline)
@@ -42,6 +55,39 @@ struct SubmissionScreen: View {
             if let url = model.detail?.imageURL {
                 ImageViewerScreen(url: url, title: model.detail?.title ?? "")
             }
+        }
+    }
+
+    /// 分级遮罩：默认盖住内容，明确告诉用户「为什么看不到」，并留一个自主放行的口子
+    private func ratingCover(_ rating: FASubmissionRating) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                Image(systemName: rating == .adult ? "exclamationmark.triangle.fill" : "eye.slash.fill")
+                    .font(.system(size: 34))
+                    .foregroundColor(.orange)
+                Text("已按内容分级隐藏")
+                    .font(.headline)
+                Text("这条投稿的分级是 \(rating == .adult ? "Adult（露骨）" : "Mature（成人向）")，当前设置为「\(ContentFilter.shared.mode.title)」。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 32)
+                Button {
+                    revealed = true
+                } label: {
+                    Text("这次显示").font(.subheadline).bold()
+                        .padding(.horizontal, 18).padding(.vertical, 8)
+                        .background(Color.orange.opacity(0.16))
+                        .cornerRadius(9)
+                }
+                .padding(.top, 2)
+            }
+            .padding(20)
         }
     }
 

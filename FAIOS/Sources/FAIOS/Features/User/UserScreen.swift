@@ -39,6 +39,9 @@ struct UserScreen: View {
         .navigationTitle(model.profile?.displayName ?? slug)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: slug) { await model.load(slug: slug) }
+        .onReceive(NotificationCenter.default.publisher(for: .faiosContentModeDidChange)) { _ in
+            Task { await model.reloadGallery() }
+        }
     }
 
     // MARK: - 资料头
@@ -163,12 +166,24 @@ final class UserViewModel: ObservableObject {
             let html = try await FAFetch.html(url)
             let page = try FASubmissionsPage.parse(html, from: url)
             let existing = Set(submissions.map { $0.id })
-            submissions.append(contentsOf: page.submissions.filter { !existing.contains($0.id) })
+            submissions.append(contentsOf: page.submissions.filter {
+                !existing.contains($0.id) && ContentFilter.shared.allows($0.rating)
+            })
             nextPageURL = page.nextPageURL
             galleryLoaded = true
         } catch {
             errorText = FAErrorMessage.describe(error)
         }
         pendingPageURL = nil
+    }
+
+    /// 分级设置变了：从头再拉一次画廊（资料头不用重拉）
+    func reloadGallery() async {
+        guard let galleryURL = profile?.galleryURL else { return }
+        submissions = []
+        nextPageURL = nil
+        pendingPageURL = nil
+        galleryLoaded = false
+        await fetchGallery(galleryURL)
     }
 }

@@ -63,6 +63,10 @@ struct BrowseScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: .faiosLoginDidChange)) { _ in
             Task { await model.reload() }
         }
+        // 改了分级过滤同理：可见集合变了，旧数据不能留
+        .onReceive(NotificationCenter.default.publisher(for: .faiosContentModeDidChange)) { _ in
+            Task { await model.reload() }
+        }
     }
 }
 
@@ -95,6 +99,27 @@ struct ThumbnailCell: View {
                         .padding(3)
                 }
             }
+            .overlay(alignment: .topTrailing) {
+                if let badge = Self.ratingBadge(submission.rating) {
+                    Text(badge)
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(submission.rating == .adult ? Color.red.opacity(0.85) : Color.orange.opacity(0.85))
+                        .cornerRadius(3)
+                        .padding(3)
+                }
+            }
+    }
+
+    /// 角标只标「需要注意」的：General 不打扰，Mature/Adult 各给一个记号
+    static func ratingBadge(_ rating: FASubmissionRating) -> String? {
+        switch rating {
+        case .general: return nil
+        case .mature: return "M"
+        case .adult: return "18+"
+        }
     }
 }
 
@@ -124,20 +149,45 @@ final class BrowseViewModel: ObservableObject {
         errorText = nil
         defer { isLoading = false }
 
-        do {
+        // 分级过滤后一整页可能全是不要的（比如 SFW 模式下刚好一页都是成人向），
+        // 这时要自动续下一页，否则用户只看到一屏空白。上限 4 页，防止在极端过滤条件下无限翻。
+        var rounds = 0
+        while rounds < 4 {
+            rounds += 1
             let url = nextPageURL ?? startURL
             // 防死循环：解析器要是指回同一个 URL，就当到底了
             let previousPageURL = nextPageURL
-            let html = try await FAFetch.html(url)
-            let page = try FASubmissionsPage.parse(html, from: url)
-            let known = Set(submissions.map { $0.id })
-            let fresh = page.submissions.filter { !known.contains($0.id) }
-            submissions.append(contentsOf: fresh)
-            nextPageURL = (page.nextPageURL == url || page.nextPageURL == previousPageURL) ? nil : page.nextPageURL
-            FADebugLog.log("browse \(url.lastPathComponent) +\(fresh.count) total=\(submissions.count) next=\(nextPageURL == nil ? "nil" : "yes")")
-        } catch {
-            errorText = FAErrorMessage.describe(error)
+
+            do {
+                let requestURL = Self.supportsRatingParams(url)
+                    ? url.applyingRatingFilter(ContentFilter.shared.mode)
+                    : url
+                let html = try await FAFetch.html(requestURL)
+                let page = try FASubmissionsPage.parse(html, from: requestURL)
+                let known = Set(submissions.map { $0.id })
+                let fresh = page.submissions.filter {
+                    !known.contains($0.id) && ContentFilter.shared.allows($0.rating)
+                }
+                let before = submissions.count
+                submissions.append(contentsOf: fresh)
+                nextPageURL = (page.nextPageURL == url || page.nextPageURL == previousPageURL)
+                    ? nil
+                    : page.nextPageURL
+                FADebugLog.log("browse \(url.lastPathComponent) +\(fresh.count)/\(page.submissions.count) total=\(submissions.count)")
+
+                // 这一页确实给了新内容，就交给用户看；空页且还有下一页则继续翻
+                if submissions.count > before || nextPageURL == nil { return }
+            } catch {
+                errorText = FAErrorMessage.describe(error)
+                return
+            }
         }
+    }
+
+    /// 只有服务端认分级参数的页面才拼这些参数（浏览页实测认；首页/艺术家页不认，靠本地过滤）
+    private static func supportsRatingParams(_ url: URL) -> Bool {
+        let path = url.path
+        return path.hasPrefix("/browse") || path.hasPrefix("/search")
     }
 
     /// 滚动到接近底部就预取下一页（LazyVGrid 的 onAppear 只在最后一条触发太晚，网络一慢就卡住）

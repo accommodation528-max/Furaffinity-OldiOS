@@ -90,6 +90,7 @@ struct AccountScreen: View {
     @Binding var showLogin: Bool
 
     @ObservedObject private var host = FAWebHost.shared
+    @ObservedObject private var filter = ContentFilter.shared
     @State private var checkMessage: String?
 
     var body: some View {
@@ -177,6 +178,33 @@ struct AccountScreen: View {
                 Text("连接")
             } footer: {
                 Text("被 Cloudflare 拦下时点「刷新信任」：会用内嵌网页重新过一遍验证，然后重开连接。")
+            }
+
+            Section {
+                Picker(selection: $filter.mode) {
+                    ForEach(ContentFilter.Mode.allCases) { mode in
+                        HStack(spacing: 8) {
+                            Image(systemName: mode.symbol)
+                            Text(mode.title)
+                        }
+                        .tag(mode)
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: filter.mode.symbol)
+                        Text("内容分级")
+                    }
+                }
+
+                HStack {
+                    Text("当前")
+                    Spacer()
+                    Text(filter.mode.detail).foregroundColor(.secondary)
+                }
+            } header: {
+                Text("内容")
+            } footer: {
+                Text("列表里按投稿的分级过滤：General 全年龄、Mature 成人向、Adult 露骨。切换后首页/浏览/搜索/画廊会重新拉取。")
             }
 
             Section("关于") {
