@@ -5,6 +5,7 @@ struct RootView: View {
 
     @ObservedObject private var host = FAWebHost.shared
     @ObservedObject private var gate = ChallengeGate.shared
+    @ObservedObject private var appearance = Appearance.shared
 
     @State private var showLogin = false
 
@@ -70,6 +71,8 @@ struct RootView: View {
         .sheet(isPresented: $showLogin) {
             FALoginView()
         }
+        // 外观只在最外层设一次：里面所有屏（含 sheet）跟着变
+        .preferredColorScheme(appearance.mode.colorScheme)
     }
 }
 
@@ -109,6 +112,7 @@ struct AccountScreen: View {
 
     @ObservedObject private var host = FAWebHost.shared
     @ObservedObject private var filter = ContentFilter.shared
+    @ObservedObject private var appearance = Appearance.shared
     @ObservedObject private var account = FAAccountStore.shared
     @State private var checkMessage: String?
     @State private var imageStats: FAImageCache.Stats?
@@ -391,6 +395,23 @@ struct AccountScreen: View {
                 Text("内容")
             } footer: {
                 Text("列表里按投稿的分级过滤：General 全年龄、Mature 成人向、Adult 露骨。切换后首页/浏览/搜索/画廊会重新拉取。")
+            }
+
+            Section {
+                Picker(selection: $appearance.mode) {
+                    ForEach(Appearance.Mode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: appearance.mode == .dark ? "moon.fill" : "circle.lefthalf.fill")
+                        Text("外观")
+                    }
+                }
+            } header: {
+                Text("外观")
+            } footer: {
+                Text("「跟随系统」就是系统设置里的深/浅色；这里可以强制指定，方便在深色下看图和工具栏材质的对比度。")
             }
 
             Section {

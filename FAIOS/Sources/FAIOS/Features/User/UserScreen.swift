@@ -94,6 +94,7 @@ struct UserScreen: View {
                             .cornerRadius(8)
                     }
                     .disabled(model.watchBusy)
+                    .accessibilityLabel(model.isWatching ? "已关注，双击取消关注" : "关注")
 
                     Button {
                         composing = true
@@ -106,6 +107,7 @@ struct UserScreen: View {
                             .foregroundColor(.primary)
                             .cornerRadius(8)
                     }
+                    .accessibilityLabel("给 \(model.profile?.displayName ?? slug) 发私信")
                 }
             }
             .padding(.horizontal, 14)

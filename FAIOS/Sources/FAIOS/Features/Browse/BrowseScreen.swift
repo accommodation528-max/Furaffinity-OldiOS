@@ -107,6 +107,7 @@ struct BrowseScreen: View {
         } label: {
             Image(systemName: downloader.isRunning ? "arrow.down.circle.fill" : "arrow.down.circle")
         }
+        .accessibilityLabel(downloader.isRunning ? "正在下载，打开可取消" : "批量下载")
     }
 
     @ViewBuilder
@@ -208,6 +209,29 @@ struct ThumbnailCell: View {
                         .padding(3)
                 }
             }
+            // VoiceOver：一张缩略图就是一个条目，别让用户去读图片本身
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Self.accessibilityLabel(for: submission))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("打开这条投稿")
+    }
+
+    /// 「标题，作者 xxx，分级 General」——把用户在列表页真正需要的那三样一次说完
+    static func accessibilityLabel(for submission: FASubmission) -> String {
+        var parts: [String] = [submission.title]
+        parts.append("作者 \(submission.authorName)")
+        switch submission.rating {
+        case .general: break
+        case .mature: parts.append("分级 Mature")
+        case .adult: parts.append("分级 Adult")
+        }
+        switch submission.kind {
+        case .image: break
+        case .text: parts.append("文字投稿")
+        case .audio: parts.append("音乐投稿")
+        case .unknown: break
+        }
+        return parts.joined(separator: "，")
     }
 
     /// 角标只标「需要注意」的：General 不打扰，Mature/Adult 各给一个记号
@@ -351,20 +375,31 @@ extension BrowseViewModel {
         return submissions.indices.contains(start) ? submissions[start].id : nil
     }
 
-    /// 「下一页」：下一页的第一条；还没加载过就先拉一页
+    /// 「下一页」：下一页的第一条；还没加载过就先拉一页。
+    ///
+    /// 为什么要连拉几次：FA 的列表在两次请求之间会**插进新投稿**，导致分页结果整体后移，
+    /// 某一页返回的 48 条可能全都在我们已有的列表里（去重后一条不剩）。以前这种情况直接返回 nil，
+    /// 表现就是「点了 `»` 没反应，`»` 还亮着」——看着像页数被卡住了。现在最多连跳 3 页找新内容。
     func pageStart(after id: Int) async -> Int? {
         guard let page = pageIndex(of: id) else { return nil }
         if page + 1 < pageStarts.count {
             let start = pageStarts[page + 1]
             return submissions.indices.contains(start) ? submissions[start].id : nil
         }
-        guard nextPageURL != nil else { return nil }
-        let before = submissions.count
-        await load()
-        // 新页可能被分级过滤整页吃掉，load() 内部会继续翻；这里以「列表变长了」为准
-        guard submissions.count > before, page + 1 < pageStarts.count else { return nil }
-        let start = pageStarts[page + 1]
-        return submissions.indices.contains(start) ? submissions[start].id : nil
+
+        for _ in 0..<3 {
+            guard nextPageURL != nil else { return nil }
+            let before = submissions.count
+            await load()
+            guard submissions.count > before else { continue }
+            // 新页可能整页被分级过滤吃掉；load() 内部会继续翻，这里只看「有没有变长」
+            if page + 1 < pageStarts.count {
+                let start = pageStarts[page + 1]
+                return submissions.indices.contains(start) ? submissions[start].id : nil
+            }
+            return nil
+        }
+        return nil
     }
 
     /// 往后翻作品时顺手预取：滚到倒数第 3 条就把下一页拉回来

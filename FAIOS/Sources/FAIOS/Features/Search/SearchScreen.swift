@@ -117,6 +117,8 @@ struct SearchScreen: View {
 /// 简易标签流：每行最多 3 个，iOS 15 没有 `Layout` 协议，这样排最省心也不会被裁
 struct FlowChips: View {
     let terms: [String]
+    /// VoiceOver 里怎么念：搜索历史是「用 X 搜索」，标签是「按标签 X 查看列表」
+    var labelFormat: String = "用 %@ 搜索"
     let tap: (String) -> Void
 
     private var rows: [[String]] {
@@ -142,6 +144,7 @@ struct FlowChips: View {
                                 .cornerRadius(13)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(String(format: labelFormat, term))
                     }
                     Spacer(minLength: 0)
                 }

@@ -19,6 +19,9 @@ struct SubmissionScreen: View {
     @State private var currentID: Int?
     /// 点了哪个标签（用它驱动隐藏的 NavigationLink，避免横向 ScrollView 吞掉点击）
     @State private var tagToOpen: String?
+    /// 原图下载状态：非 nil 时顶部显示一行提示
+    @State private var downloadNote: String?
+    @State private var downloading = false
 
     private var activeID: Int { currentID ?? id }
 
@@ -70,7 +73,43 @@ struct SubmissionScreen: View {
                             .foregroundColor(model.favorited ? .pink : .accentColor)
                     }
                     .disabled(model.favoriteBusy)
+                    .accessibilityLabel(model.favorited ? "取消收藏" : "收藏")
                 }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button {
+                        downloadOriginal()
+                    } label: {
+                        Label("下载原图", systemImage: "arrow.down.to.line")
+                    }
+                    .disabled(model.detail?.imageURL == nil || downloading)
+
+                    Button {
+                        if let url = model.detail?.imageURL {
+                            UIPasteboard.general.string = url.absoluteString
+                            showNote("原图链接已复制")
+                        }
+                    } label: {
+                        Label("复制原图链接", systemImage: "link")
+                    }
+                    .disabled(model.detail?.imageURL == nil)
+                } label: {
+                    Image(systemName: downloading ? "arrow.down.circle.fill" : "ellipsis.circle")
+                }
+                .accessibilityLabel("更多操作")
+            }
+        }
+        .overlay(alignment: .top) {
+            if let note = downloadNote {
+                Text(note)
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial)
+                    .cornerRadius(9)
+                    .padding(.top, 8)
+                    .transition(.opacity)
             }
         }
         .task(id: activeID) { await model.load(id: activeID) }
@@ -88,6 +127,39 @@ struct SubmissionScreen: View {
             if let url = model.detail?.imageURL {
                 ImageViewerScreen(url: url, title: model.detail?.title ?? "")
             }
+        }
+    }
+
+    // MARK: - 原图下载
+
+    /// 下载原图到「文件」App 可见的目录。
+    /// 列表页的 `figure` 里只有 @600 缩略图地址，原图（`data-fullview-src`）只有详情页才拿得到 ——
+    /// 所以「单张原图」放在这里，「批量」放在列表页，两者的数据来源本来就不同。
+    private func downloadOriginal() {
+        guard let url = model.detail?.imageURL else { return }
+        downloading = true
+        Task {
+            do {
+                let data = try await FAFetch.data(url)
+                guard let folder = BatchDownloader.directory() else {
+                    throw FAHTTP.FAHTTPError.http(500)
+                }
+                let ext = url.pathExtension.isEmpty ? "jpg" : url.pathExtension
+                let target = folder.appendingPathComponent("\(activeID).\(ext)")
+                try data.write(to: target, options: .atomic)
+                downloading = false
+                showNote("已保存原图（\(data.count / 1024) KB）到 FAIOS/downloads")
+            } catch {
+                downloading = false
+                showNote(FAErrorMessage.describe(error))
+            }
+        }
+    }
+
+    private func showNote(_ text: String) {
+        withAnimation { downloadNote = text }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation { downloadNote = nil }
         }
     }
 
@@ -235,7 +307,7 @@ struct SubmissionScreen: View {
                 // 点标签就按这个标签去搜 —— 网页版要手动复制到搜索框，这里一步到位。
                 // 注意不能把 chip 放进横向 ScrollView：实测那层滚动手势会把点击吃掉
                 // （点上去毫无反应，只有手指真实滑动才生效），所以改成自动换行的流式布局。
-                FlowChips(terms: tags) { tag in
+                FlowChips(terms: tags, labelFormat: "按标签 %@ 查看列表") { tag in
                     tagToOpen = tag
                 }
             }
@@ -463,10 +535,10 @@ struct SubmissionNavBar: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 0) {
-                button("backward.end.fill", enabled: hasPreviousPage) {
+                button("backward.end.fill", label: "上一页", enabled: hasPreviousPage) {
                     if let target = feed.pageStart(before: id) { onSelect(target) }
                 }
-                button("chevron.left", enabled: hasPrevious) {
+                button("chevron.left", label: "上一个作品", enabled: hasPrevious) {
                     go(offset: -1)
                 }
 
@@ -482,13 +554,16 @@ struct SubmissionNavBar: View {
                     }
                 }
                 .frame(minWidth: 66)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("列表第 \(feed.positionLabel(of: id)) 张")
+                .accessibilityAddTraits(.isStaticText)
 
                 Spacer(minLength: 0)
 
-                button("chevron.right", enabled: hasNext) {
+                button("chevron.right", label: "下一个作品", enabled: hasNext) {
                     go(offset: 1)
                 }
-                button("forward.end.fill", enabled: hasNextPage) {
+                button("forward.end.fill", label: "下一页", enabled: hasNextPage) {
                     goPage()
                 }
             }
@@ -498,7 +573,7 @@ struct SubmissionNavBar: View {
         }
     }
 
-    private func button(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func button(_ symbol: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .semibold))
