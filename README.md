@@ -53,11 +53,19 @@ swift test
 ## 构建 ipa
 
 ```bash
-cd /mnt/d/faios/FAIOS
-xtool dev build --ipa        # → FAIOS/xtool/FAIOS.ipa
+bash scripts/build.sh        # 一条命令：编译 + 补 Info.plist + 拷到 build/
 ```
 
-产物 `MinimumOSVersion = 15.0`，未签名（设备有 TrollStore，不需要签名）。
+它比直接 `xtool dev build --ipa` 多两步：
+
+1. `scripts/patch-ipa.py` 往 Info.plist 补 `UIBackgroundModes: [audio]` ——
+   没有它，音乐一按 home 就停，锁屏也没有播放状态。
+2. 同时塞进 `scripts/icons/Icon-*.png` 并登记 `CFBundleIconFiles`，
+   以及**每次构建把 `CFBundleVersion` 涨一**（SpringBoard 的图标缓存按版本失效）。
+
+产物 `build/FAIOS.ipa`，`MinimumOSVersion = 15.0`，未签名（设备有 TrollStore，不需要签名）。
+
+图标本身由 `python scripts/make-icon.py` 生成（Pillow 画出来的爪印，改色改形状都改这一个文件）。
 
 ## 装到手机
 
@@ -103,7 +111,8 @@ ios_use_control tap   # x/y 归一化 0..1
 | M3 账号功能 | ✅ 收藏 / 关注 / 评论（只读）/ 通知 / 关注流 / 我的收藏 / **Notes（私信）**，全部真机验收；55 个单测 |
 | **M4 阅读器** | ✅ Journal 阅读器（标题/作者/时间/分级/正文/评论）+ **小说阅读器**：BBCode 排版的正文、字号/行距可调、**退出重进回到上次位置**、PDF 走 PDFKit、docx/rtf 交给系统打开。真机验收（22,372 字德语故事） |
 | **性能与图片缓存** | ✅ 两级缓存（内存 400 张 / 96MB + 磁盘 320MB）+ ImageIO 解码期降采样 + 静态资源独立车道。真机实测：重进页面 **省 53~59% 网络**，一屏 12 张出图时间从 4.2s 的量级降到 ~1s |
-| M5 打磨 | ⬜ 主题 / 无障碍 / 图标 |
+| **音乐播放器** | ✅ 详情页播放卡片（封面/进度/时间）+ 全局迷你播放条（切 tab 继续控制）+ 锁屏与控制中心（`MPRemoteCommandCenter`）+ 后台播放（补了 `UIBackgroundModes: [audio]`）。音频先下载再播 —— 直链要过 Cloudflare 与 cookie |
+| **M5 打磨** | 🟡 已完成：诊断项收进「诊断」折叠区、版本号自动递增、App 图标（脚本生成）。待做：深/浅色主题细节、无障碍标签 |
 
 ### 已知的坑（都已写进代码注释）
 
@@ -148,7 +157,18 @@ ios_use_control tap   # x/y 归一化 0..1
   同样的图只占 ~0.4MB（**36 倍**）。缩略图档位实测：`@200/@300/@400/@600` 可用，`@800` 以上 301
 - **手动拷贝安装的 App 连自己的 `Caches` 都写不了**（不只是 Documents）：图片磁盘缓存因此要做
   「逐级试探可写目录」——实测最终落在 `/tmp/faios-images`（屏幕上那份统计会显示真实路径）
+- **失败反馈不能拿「动作的响应」当结果**：`/watch/{user}/?key=` 跳回来的页面结构跟用户页不一样
   （解析出的用户名、头像、统计全对不上）。正确做法是乐观翻转 + 重新抓原页面确认
+- **xtool 不生成 `UIBackgroundModes`，也不生成图标**：`xtool.yml` 只认 `version` 与 `bundleID`。
+  后台音频与 App 图标都得在 ipa 产物上打补丁（`scripts/patch-ipa.py`），
+  而且 `install-device.sh` 必须默认装 `build/` 里那份打过补丁的 ipa，否则补丁白打
+- **SpringBoard 的图标缓存按 `CFBundleVersion` 失效**：版本号不变时换了图标也只会继续显示旧图/占位图，
+  所以每次构建都自动涨一个 build 号（「我的 → 关于 → 版本」能直接看到）
+- **手动 `cp -R` 装进 `/var/jb/Applications` 的 App 在这个越狱环境里拿不到自定义图标**：
+  Spotlight 与桌面仍是系统的网格占位图（同一路径下所有手装 App 都一样）。
+  想看到图标得走 TrollStore / 正常签名安装；`trollstorehelper install` 在这台机器上返回 179/166，未通过
+- **音乐投稿的 `<audio src>` 不能直接丢给 `AVAudioPlayer`**：那个直链同样要过 Cloudflare 与 cookie，
+  `AVPlayer(url:)` 不带我们的请求头，结果是静默失败。必须先 `FAFetch.data` 下载到本地再从文件播
 - **需要登录的页面只能从手机上取**：开发机（WSL）没有 cookie，
   用「我的 → 导出页面快照（调试）」把页面写到 `/var/tmp`，再 `ssh cat` 取回当 fixture
 - **`RelativeDateTimeFormatter` 跟系统语言走**：设备是英文系统，界面是中文，相对时间会变成 "2 yr. ago"，

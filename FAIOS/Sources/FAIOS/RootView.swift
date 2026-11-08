@@ -107,6 +107,8 @@ struct AccountScreen: View {
     @State private var checkMessage: String?
     @State private var imageStats: FAImageCache.Stats?
     @State private var storeMessage: String?
+    /// 开发者工具默认收起（日常用不到，展开才有噪音）
+    @State private var showDiagnostics = false
 
     var body: some View {
         List {
@@ -174,60 +176,66 @@ struct AccountScreen: View {
                 // 注意：别在这上面挂 .simultaneousGesture(LongPressGesture) ——
                 // Button 在 List 里被同时喂了一个长按手势后，单击会一起哑掉（真机上就是这个症状）
 
-                Button {
-                    Task { await runHealthCheck(forceChallenge: true) }
+                // 开发者工具默认折叠：日常使用时这一堆「（调试）」行只会造成噪音
+                DisclosureGroup(isExpanded: $showDiagnostics) {
+                    Button {
+                        Task { await runHealthCheck(forceChallenge: true) }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "bolt.shield")
+                            Text("自检（强制挑战）")
+                        }
+                    }
+
+                    // 真机是唯一有登录态的机器，把需要登录的页面抓到可写目录里，
+                    // 再用 SSH 拉回 PC 当解析层的真实 fixture（离线就能写测试）
+                    Button {
+                        Task { await exportSnapshots() }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "square.and.arrow.up.on.square")
+                            Text("导出页面快照")
+                        }
+                    }
+
+                    // 一条 .txt 故事（正文是 BBCode 的那种），用来验证阅读器
+                    NavigationLink(destination: SubmissionScreen(id: 66961612)) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "book")
+                            Text("故事样本")
+                        }
+                    }
+
+                    // 一条音乐投稿（验证播放器与锁屏控制）
+                    NavigationLink(destination: SubmissionScreen(id: 66961793)) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "music.note")
+                            Text("音乐样本")
+                        }
+                    }
+
+                    // 设置到底写没写进磁盘（这台机器上 UserDefaults 是假的）
+                    Button {
+                        storeMessage = FAStore.filePath.map { path in
+                            let error = FAStore.lastWriteError.map { "｜写盘错误：\($0)" } ?? "｜写盘 OK"
+                            return "设置：\(path)\(error)"
+                        } ?? "设置：找不到可写目录（只存在内存里）"
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "externaldrive")
+                            Text("设置存储位置")
+                        }
+                    }
+
+                    if let storeMessage {
+                        Text(storeMessage)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "bolt.shield")
-                        Text("自检（强制挑战）")
-                    }
-                }
-
-                // 调试用：真机是唯一有登录态的机器，把需要登录的页面抓到可写目录里，
-                // 再用 SSH 拉回 PC 当解析层的真实 fixture（离线就能写测试）
-                Button {
-                    Task { await exportSnapshots() }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "square.and.arrow.up.on.square")
-                        Text("导出页面快照（调试）")
-                    }
-                }
-
-                // 调试用：一条 .txt 故事（正文是 BBCode 的那种），用来验证阅读器
-                NavigationLink(destination: SubmissionScreen(id: 66961612)) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "book")
-                        Text("打开故事样本（调试）")
-                    }
-                }
-
-                // 调试用：一条音乐投稿（用来验证播放器与锁屏控制）
-                NavigationLink(destination: SubmissionScreen(id: 66961793)) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "music.note")
-                        Text("打开音乐样本（调试）")
-                    }
-                }
-
-                // 调试用：设置到底写没写进磁盘（这台机器上 UserDefaults 是假的）
-                Button {
-                    storeMessage = FAStore.filePath.map { path in
-                        let error = FAStore.lastWriteError.map { "｜写盘错误：\($0)" } ?? "｜写盘 OK"
-                        return "设置：\(path)\(error)"
-                    } ?? "设置：找不到可写目录（只存在内存里）"
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "externaldrive")
-                        Text("设置存储位置（调试）")
-                    }
-                }
-
-                if let storeMessage {
-                    Text(storeMessage)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Label("诊断", systemImage: "stethoscope")
+                        .font(.subheadline)
                 }
 
                 if let message = checkMessage {
