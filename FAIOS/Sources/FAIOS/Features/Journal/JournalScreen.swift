@@ -52,7 +52,8 @@ struct JournalScreen: View {
                         Color.clear
                             .frame(width: 26, height: 26)
                             .clipShape(Circle())
-                            .overlay(RemoteImage(url: journal.authorAvatarURL, contentMode: .fill))
+                            .overlay(RemoteImage(url: journal.authorAvatarURL, contentMode: .fill,
+                                                 maxPixelSize: FAImageSize.avatar))
                             .overlay(Circle().stroke(Color.primary.opacity(0.1)))
                         Text(journal.authorName).font(.subheadline)
                     }

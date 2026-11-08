@@ -46,7 +46,10 @@ struct RootView: View {
             // 「续 Cloudflare 信任」用的就是访客，白跑一趟。
             Task {
                 await FAWebCookieBridge.injectStoredCookies()
-                // 再让 WebView 跑一遍首页续信任；顺手把登录态刷进界面
+                // 让出一段时间再跑预热：首页首屏要抢带宽，冷启动时 WebView 同步加载
+                // FA 首页（100+ KB + 一堆图标）会把第一屏图片挤在后面。
+                // 实测：cf_clearance 不是必需项（有 a/b 就够），所以晚 2.5 秒开跑没有风险。
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
                 await FAWebHost.shared.warmUpIfNeeded()
             }
         }
@@ -98,6 +101,7 @@ struct AccountScreen: View {
     @ObservedObject private var filter = ContentFilter.shared
     @ObservedObject private var account = FAAccountStore.shared
     @State private var checkMessage: String?
+    @State private var imageStats: FAImageCache.Stats?
 
     var body: some View {
         List {
@@ -195,6 +199,41 @@ struct AccountScreen: View {
                 Text("连接")
             } footer: {
                 Text("被 Cloudflare 拦下时点「刷新信任」：会用内嵌网页重新过一遍验证，然后重开连接。")
+            }
+
+            // 图片管线的现场读数：真机上唯一能看到的「缓存到底有没有生效」
+            Section {
+                Button {
+                    Task { await refreshImageStats() }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                        Text("刷新图片缓存统计")
+                    }
+                }
+
+                if let stats = imageStats {
+                    Text(stats.summary)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button(role: .destructive) {
+                    Task {
+                        await FAImageCache.shared.clear()
+                        await refreshImageStats()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "trash")
+                        Text("清空图片缓存")
+                    }
+                }
+            } header: {
+                Text("图片")
+            } footer: {
+                Text("缩略图按格子大小降采样后再解码，原图只喂给查看器。磁盘缓存 320MB，超了按最旧删除。")
             }
 
             // 登录后才有的入口：关注流 / 通知 / 我的收藏
@@ -309,6 +348,10 @@ struct AccountScreen: View {
         checkMessage = nil
         await FAWebHost.shared.warmUpIfNeeded(force: true)
         checkMessage = host.isLoggedIn ? "已完成，登录态有效" : "已完成（当前为访客身份）"
+    }
+
+    private func refreshImageStats() async {
+        imageStats = await FAImageCache.shared.snapshot()
     }
 
     private func runHealthCheck(forceChallenge: Bool = false) async {

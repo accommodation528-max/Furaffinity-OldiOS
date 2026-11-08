@@ -114,6 +114,7 @@ struct SubmissionScreen: View {
                 RemoteImage(
                     url: model.detail?.previewURL ?? model.detail?.imageURL ?? known?.thumbnailURL,
                     contentMode: .fit,
+                    maxPixelSize: FAImageSize.hero,
                     onLoad: { size in
                         guard size.height > 0 else { return }
                         let newRatio = size.width / size.height
@@ -138,7 +139,8 @@ struct SubmissionScreen: View {
                         Color.clear
                             .frame(width: 30, height: 30)
                             .aspectRatio(1, contentMode: .fit)
-                            .overlay(RemoteImage(url: detail.authorAvatarURL, contentMode: .fill))
+                            .overlay(RemoteImage(url: detail.authorAvatarURL, contentMode: .fill,
+                                                 maxPixelSize: FAImageSize.avatar))
                             .clipShape(Circle())
 
                         VStack(alignment: .leading, spacing: 1) {
@@ -352,7 +354,8 @@ struct CommentRow: View {
         HStack(alignment: .top, spacing: 8) {
             Color.clear
                 .frame(width: 26, height: 26)
-                .overlay(RemoteImage(url: comment.avatarURL, contentMode: .fill))
+                .overlay(RemoteImage(url: comment.avatarURL, contentMode: .fill,
+                                     maxPixelSize: FAImageSize.avatar))
                 .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 3) {

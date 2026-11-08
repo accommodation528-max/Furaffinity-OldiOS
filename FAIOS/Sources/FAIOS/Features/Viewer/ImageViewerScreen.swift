@@ -84,7 +84,9 @@ struct ImageViewerScreen: View {
         )
         .task {
             do {
-                image = try await FAImageCache.shared.image(for: url)
+                // 查看器要的是原图：这里**不**降采样（maxPixelSize: nil），
+                // 反正全屏也就这一张，而且用户放大时得看细节
+                image = try await FAImageCache.shared.image(for: url, maxPixelSize: nil)
             } catch {
                 errorText = String(describing: error)
             }

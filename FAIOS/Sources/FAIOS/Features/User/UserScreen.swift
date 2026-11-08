@@ -58,7 +58,8 @@ struct UserScreen: View {
                 Color.clear
                     .frame(width: 64, height: 64)
                     .aspectRatio(1, contentMode: .fit)
-                    .overlay(RemoteImage(url: profile.avatarURL, contentMode: .fill))
+                    .overlay(RemoteImage(url: profile.avatarURL, contentMode: .fill,
+                                         maxPixelSize: FAImageSize.avatar))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 VStack(alignment: .leading, spacing: 3) {

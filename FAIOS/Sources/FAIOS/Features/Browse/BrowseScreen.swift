@@ -85,8 +85,10 @@ struct ThumbnailCell: View {
         Color(.secondarySystemBackground)
             .aspectRatio(displayRatio, contentMode: .fit)
             .overlay(
-                // 列表页给的是 @200 缩略图，在视网膜屏上偏糊，往上提一档
-                RemoteImage(url: FAURLs.thumbnailSized(submission.thumbnailURL))
+                // 列表页给的是 @200 缩略图，在视网膜屏上偏糊，往上提一档。
+                // maxPixelSize 决定解码尺寸：不给的话 1:8 的长条图会按原尺寸解码，几百 MB 起步
+                RemoteImage(url: FAURLs.thumbnailSized(submission.thumbnailURL),
+                            maxPixelSize: FAImageSize.thumbnail)
             )
             .clipped()
             .overlay(alignment: .bottomLeading) {

@@ -10,7 +10,8 @@ import FAPages
 ///
 /// 三个必须守住的不变式：
 /// 1. **UA 唯一**：所有请求（含 WebView）用同一个 UA，否则 cf_clearance 作废
-/// 2. **并发不超 3、间隔不小于 350ms**：FA 的限速是真实存在的
+/// 2. **页面并发不超 3、间隔不小于 350ms**：FA 的限速是真实存在的；
+///    静态资源（`t.`/`a.`/`d.` 子域）走另一条快车道，见下方 `Lane`
 /// 3. **挑战不交给解析器**：识别到挑战就抛错，别把挑战页当页面解析
 public actor FAHTTP {
 
@@ -42,8 +43,18 @@ public actor FAHTTP {
 
     private let config: URLSessionConfiguration
     private var session: URLSession
-    private let gate = AsyncSemaphore(limit: FAChallenge.Throttle.maxConcurrent)
-    private var lastRequestTime: Date?
+
+    /// 两条车道：页面和静态资源。
+    ///
+    /// FA 的限速针对的是**页面的动态渲染**（一个请求要后端生成 100KB+ HTML）。
+    /// 缩略图是同一批 CDN 上的静态文件，按 350ms 一张串着取，一屏 12 张就要 4.2 秒 ——
+    /// 真机冷启动时第一屏几乎全是灰格子，瓶颈就在这里。
+    /// 浏览器自己也是每个域名开 6 条连接并行取图，所以这里对静态资源放行：
+    /// 并发 6、间隔 80ms，页面那条路保持 3 / 350ms 不变。
+    private let pageGate = AsyncSemaphore(limit: FAChallenge.Throttle.maxConcurrent)
+    private let assetGate = AsyncSemaphore(limit: 6)
+    private var pageLastRequest: Date?
+    private var assetLastRequest: Date?
 
     /// 失败重试次数（不含首次）
     private let maxRetries = 2
@@ -134,11 +145,33 @@ public actor FAHTTP {
 
     // MARK: - 单次请求
 
-    private func performOnce(_ url: URL, method: String = "GET", body: Data? = nil) async throws -> Data {
-        await gate.acquire()
-        defer { Task { await gate.release() } }
+    private enum Lane {
+        case page
+        case asset
+    }
 
-        await waitForSpacing()
+    /// 静态资源（缩略图 / 原图 / 头像）走快车道，页面走慢车道
+    private static func lane(for url: URL) -> Lane {
+        guard let host = url.host?.lowercased() else { return .page }
+        return host.hasPrefix("t.") || host.hasPrefix("a.") || host.hasPrefix("d.")
+            ? .asset
+            : .page
+    }
+
+    private func performOnce(_ url: URL, method: String = "GET", body: Data? = nil) async throws -> Data {
+        let lane = Self.lane(for: url)
+        if lane == .asset {
+            await assetGate.acquire()
+        } else {
+            await pageGate.acquire()
+        }
+        defer {
+            Task {
+                if lane == .asset { await assetGate.release() } else { await pageGate.release() }
+            }
+        }
+
+        await waitForSpacing(lane)
 
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -182,15 +215,23 @@ public actor FAHTTP {
         return data
     }
 
-    /// 强制两次请求之间至少隔 `minimumSpacingMS`
-    private func waitForSpacing() async {
-        let minimum = Double(FAChallenge.Throttle.minimumSpacingMS) / 1000
-        if let last = lastRequestTime {
+    /// 强制两次同类请求之间至少隔 `minimumSpacingMS`（静态资源另有一条更紧的间隔）
+    private func waitForSpacing(_ lane: Lane) async {
+        let minimum = lane == .asset
+            ? 0.08
+            : Double(FAChallenge.Throttle.minimumSpacingMS) / 1000
+        let last = lane == .asset ? assetLastRequest : pageLastRequest
+
+        if let last {
             let elapsed = Date().timeIntervalSince(last)
             if elapsed < minimum {
                 try? await Task.sleep(nanoseconds: UInt64((minimum - elapsed) * 1_000_000_000))
             }
         }
-        lastRequestTime = Date()
+        if lane == .asset {
+            assetLastRequest = Date()
+        } else {
+            pageLastRequest = Date()
+        }
     }
 }
