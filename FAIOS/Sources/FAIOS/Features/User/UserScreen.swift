@@ -48,6 +48,9 @@ struct UserScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: .faiosContentModeDidChange)) { _ in
             Task { await model.reloadGallery() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .faiosBlocklistDidChange)) { _ in
+            model.applyBlocklist()
+        }
     }
 
     // MARK: - 资料头
@@ -244,7 +247,9 @@ final class UserViewModel: ObservableObject {
             let page = try FASubmissionsPage.parse(html, from: url)
             let existing = Set(submissions.map { $0.id })
             submissions.append(contentsOf: page.submissions.filter {
-                !existing.contains($0.id) && ContentFilter.shared.allows($0.rating)
+                !existing.contains($0.id)
+                    && ContentFilter.shared.allows($0.rating)
+                    && Blocklist.shared.match($0) == nil
             })
             nextPageURL = page.nextPageURL
             galleryLoaded = true
@@ -262,5 +267,13 @@ final class UserViewModel: ObservableObject {
         pendingPageURL = nil
         galleryLoaded = false
         await fetchGallery(galleryURL)
+    }
+
+    /// 屏蔽词变了：就地摘掉命中的条目（不重拉，否则会把正看着的作品弹掉）
+    func applyBlocklist() {
+        guard !submissions.isEmpty else { return }
+        let kept = submissions.filter { Blocklist.shared.match($0) == nil }
+        guard kept.count != submissions.count else { return }
+        submissions = kept
     }
 }

@@ -113,6 +113,7 @@ struct AccountScreen: View {
     @ObservedObject private var host = FAWebHost.shared
     @ObservedObject private var filter = ContentFilter.shared
     @ObservedObject private var appearance = Appearance.shared
+    @ObservedObject private var blocklist = Blocklist.shared
     @ObservedObject private var account = FAAccountStore.shared
     @State private var checkMessage: String?
     @State private var imageStats: FAImageCache.Stats?
@@ -412,6 +413,22 @@ struct AccountScreen: View {
                 Text("外观")
             } footer: {
                 Text("「跟随系统」就是系统设置里的深/浅色；这里可以强制指定，方便在深色下看图和工具栏材质的对比度。")
+            }
+
+            Section {
+                NavigationLink(destination: BlocklistScreen()) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "nosign")
+                        Text("屏蔽词")
+                        Spacer()
+                        Text(blocklist.isActive ? "\(blocklist.words.count) 条" : "未设置")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } header: {
+                Text("屏蔽")
+            } footer: {
+                Text("命中标题、作者名或标签的投稿会在列表里消失；详情页直接打开时会盖一层说明。也可以在投稿页的 ··· 菜单里一键屏蔽该作者或某个标签。")
             }
 
             Section {

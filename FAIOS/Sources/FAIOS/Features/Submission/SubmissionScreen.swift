@@ -37,6 +37,13 @@ struct SubmissionScreen: View {
         return ContentFilter.shared.allows(rating) ? nil : rating
     }
 
+    /// 命中了哪个屏蔽词（列表层已经过滤过，这里兜住深链 / 相关链接进来的情况）
+    private var blockedWord: String? {
+        if let detail = model.detail { return Blocklist.shared.match(detail: detail) }
+        if let known { return Blocklist.shared.match(known) }
+        return nil
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -56,7 +63,9 @@ struct SubmissionScreen: View {
                 .padding(.vertical, 16)
             }
             .overlay {
-                if let rating = blockedRating, !revealed {
+                if let word = blockedWord, !revealed {
+                    blockCover(word)
+                } else if let rating = blockedRating, !revealed {
                     ratingCover(rating)
                 }
             }
@@ -94,6 +103,31 @@ struct SubmissionScreen: View {
                         Label("复制原图链接", systemImage: "link")
                     }
                     .disabled(model.detail?.imageURL == nil)
+
+                    Divider()
+
+                    Button {
+                        if let name = model.detail?.authorName {
+                            Blocklist.shared.add(name)
+                            showNote("已屏蔽作者：\(name)")
+                        }
+                    } label: {
+                        Label("屏蔽这位作者", systemImage: "person.crop.circle.badge.xmark")
+                    }
+                    .disabled(model.detail?.authorName == nil)
+
+                    if let tags = model.detail?.tags, !tags.isEmpty {
+                        Menu {
+                            ForEach(tags, id: \.self) { tag in
+                                Button(tag) {
+                                    Blocklist.shared.add(tag)
+                                    showNote("已屏蔽标签：\(tag)")
+                                }
+                            }
+                        } label: {
+                            Label("屏蔽某个标签", systemImage: "tag.fill")
+                        }
+                    }
                 } label: {
                     Image(systemName: downloading ? "arrow.down.circle.fill" : "ellipsis.circle")
                 }
@@ -177,6 +211,41 @@ struct SubmissionScreen: View {
                 Text("已按内容分级隐藏")
                     .font(.headline)
                 Text("这条投稿的分级是 \(rating == .adult ? "Adult（露骨）" : "Mature（成人向）")，当前设置为「\(ContentFilter.shared.mode.title)」。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 32)
+                Button {
+                    revealed = true
+                } label: {
+                    Text("这次显示").font(.subheadline).bold()
+                        .padding(.horizontal, 18).padding(.vertical, 8)
+                        .background(Color.orange.opacity(0.16))
+                        .cornerRadius(9)
+                }
+                .padding(.top, 2)
+            }
+            .padding(20)
+        }
+    }
+
+    /// 屏蔽词遮罩：跟分级遮罩一样是「解释 + 一次放行」，只是原因不同。
+    /// 单独一套文案是必要的 —— 「被屏蔽词挡住」和「分级不允许」是两件事，
+    /// 混在一起用户就分不清是设置问题还是内容问题。
+    private func blockCover(_ word: String) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                Image(systemName: "nosign")
+                    .font(.system(size: 34))
+                    .foregroundColor(.orange)
+                Text("已被屏蔽词隐藏")
+                    .font(.headline)
+                Text("这条投稿命中了屏蔽词「\(word)」（看标题、作者名或标签）。")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

@@ -70,6 +70,10 @@ struct BrowseScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: .faiosContentModeDidChange)) { _ in
             Task { await model.reload() }
         }
+        // 屏蔽词：就地摘掉命中的条目，不重拉 —— 否则正停在详情页的人会被弹回列表
+        .onReceive(NotificationCenter.default.publisher(for: .faiosBlocklistDidChange)) { _ in
+            model.applyBlocklist()
+        }
         // 批量下载：只能下已经加载到本地的那些（列表页没有原图地址）
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -290,7 +294,9 @@ final class BrowseViewModel: ObservableObject {
                 let page = try FASubmissionsPage.parse(html, from: requestURL)
                 let known = Set(submissions.map { $0.id })
                 let fresh = page.submissions.filter {
-                    !known.contains($0.id) && ContentFilter.shared.allows($0.rating)
+                    !known.contains($0.id)
+                        && ContentFilter.shared.allows($0.rating)
+                        && Blocklist.shared.match($0) == nil
                 }
                 let before = submissions.count
                 if !fresh.isEmpty || submissions.isEmpty {
@@ -309,6 +315,26 @@ final class BrowseViewModel: ObservableObject {
                 return
             }
         }
+    }
+
+    /// 屏蔽词变化时**就地**把命中的条目摘掉，而不是整页重拉。
+    ///
+    /// 为什么不能 reload()：reload 会把 `submissions` 清空再填，NavigationLink 的
+    /// 数据源瞬间变空 → 正停在详情页的用户会被直接弹回列表。加一个屏蔽词把用户推出当前页
+    /// 是明显的副作用，而就地过滤既能立刻生效、又不需要一次网络请求。
+    func applyBlocklist() {
+        guard !submissions.isEmpty else { return }
+        var kept: [FASubmission] = []
+        var keptBoundaries: [Int] = []
+        let boundaries = Set(pageStarts)
+        for (index, item) in submissions.enumerated() {
+            if boundaries.contains(index) { keptBoundaries.append(kept.count) }
+            if Blocklist.shared.match(item) == nil { kept.append(item) }
+        }
+        guard kept.count != submissions.count else { return }
+        submissions = kept
+        pageStarts = Array(Set(keptBoundaries)).sorted()
+        FADebugLog.log("blocklist filtered \(submissions.count) kept")
     }
 
     /// 只有服务端认分级参数的页面才拼这些参数（浏览页实测认；首页/艺术家页不认，靠本地过滤）
