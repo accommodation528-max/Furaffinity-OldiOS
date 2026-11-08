@@ -6,13 +6,20 @@
 #       ldid 重签后 uicache 注册进 LaunchServices。
 #
 # 用法：
-#   bash scripts/install-device.sh                 # 用默认设备
-#   HOST=192.168.0.102 bash scripts/install-device.sh
+#   cp scripts/device.env.example scripts/device.env   # 填 HOST / PASS
+#   bash scripts/install-device.sh
 set -euo pipefail
 
-HOST="${HOST:-192.168.0.102}"
+here="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$here/device.env" ]; then . "$here/device.env"; fi
+
+HOST="${HOST:-}"
 USER_NAME="${USER_NAME:-root}"
-PASS="${PASS:-alpine}"
+PASS="${PASS:-}"
+if [ -z "$HOST" ] || [ -z "$PASS" ]; then
+  echo "缺少 HOST / PASS：cp scripts/device.env.example scripts/device.env 后填好再跑" >&2
+  exit 2
+fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 优先用 build/ 里的产物：scripts/build.sh 会往 Info.plist 补 UIBackgroundModes（后台播放），
 # FAIOS/xtool/FAIOS.ipa 是 xtool 的原始产物，没有这个补丁。

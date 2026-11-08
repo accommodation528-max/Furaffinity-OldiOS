@@ -33,3 +33,6 @@ DerivedData/
 
 # 构建产物（ipa、递增的 build 号）
 build/
+
+# 本机设备连接信息（含密码），不进仓库
+scripts/device.env

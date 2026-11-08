@@ -3,9 +3,16 @@
 #   bash scripts/install-any.sh <ipa> <AppName 不带 .app>
 set -euo pipefail
 
-HOST="${HOST:-192.168.0.102}"
+here="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$here/device.env" ]; then . "$here/device.env"; fi
+
+HOST="${HOST:-}"
 USER_NAME="${USER_NAME:-root}"
-PASS="${PASS:-alpine}"
+PASS="${PASS:-}"
+if [ -z "$HOST" ] || [ -z "$PASS" ]; then
+  echo "缺少 HOST / PASS：cp scripts/device.env.example scripts/device.env 后填好再跑" >&2
+  exit 2
+fi
 IPA="$1"
 APP="$2"
 REMOTE_IPA="/var/mobile/Media/$APP.ipa"

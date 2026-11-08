@@ -12,12 +12,20 @@
 #      所以这里先备份 `Documents/FAIOS`，装完再恢复（App 自己的数据只在 Documents 下）。
 #
 # 用法：
+#   cp scripts/device.env.example scripts/device.env   # 填 HOST / PASS
 #   bash scripts/install-trollstore.sh
 set -euo pipefail
 
-HOST="${HOST:-192.168.0.102}"
+here="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$here/device.env" ]; then . "$here/device.env"; fi
+
+HOST="${HOST:-}"
 USER_NAME="${USER_NAME:-root}"
-PASS="${PASS:-alpine}"
+PASS="${PASS:-}"
+if [ -z "$HOST" ] || [ -z "$PASS" ]; then
+  echo "缺少 HOST / PASS：cp scripts/device.env.example scripts/device.env 后填好再跑" >&2
+  exit 2
+fi
 BUNDLE_ID="${BUNDLE_ID:-app.faios.client}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IPA="${IPA:-$ROOT/build/FAIOS.ipa}"
