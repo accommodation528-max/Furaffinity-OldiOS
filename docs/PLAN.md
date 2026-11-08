@@ -246,10 +246,11 @@ cp xtool/FAIOS.ipa /mnt/d/faios/build/
 |---|---|---|
 | ~~**M0 基础设施**~~ ✅ | WSL+Swift+xtool 打通；SwiftPM 双包工程；`FAHTTP` + UA + 限流；`FAPages` 列表解析器 + 22 测试；端到端验证屏；`build/FAIOS.ipa` 2.27MB / minOS 15.0 | ~~3–4 天~~ 已完成 |
 | **M1 只读核心** | ✅ 首页 / 浏览 / 搜索 / 投稿详情 / 图片查看器 / 艺术家页；无限滚动；37 个 fixture 回归测试；**逐屏真机验收通过**（估 6–8 天，实际 1 天） | ~~6–8 天~~ 已完成 |
-| **M2 Cloudflare 与会话** | 常驻 WebView + ChallengeCoordinator + 登录 sheet + Keychain cookie + 挑战修复链路 | 4–5 天 |
-| **M3 账号功能** | 关注流 ✅、收藏 ✅、关注 ✅、评论（只读）✅、通知 ✅、我的收藏 ✅、Notes ⬜ | 4–5 天 |
-| **M4 阅读器** | 小说阅读器（txt/md 原生，docx/pdf 分级降级）、Journal 阅读器、进度记忆、离线 | 4–6 天 |
-| **M5 打磨发布** | 主题、空态/错误态、无障碍、性能、图标、TrollStore 打包 | 3–4 天 |
+| **M2 Cloudflare 与会话** | ✅ 常驻 WebView + 登录 sheet（密码不经过 App）+ Keychain cookie + 挑战修复链路；实测 cf_clearance 非必需（有 a/b 就够） | ~~4–5 天~~ 已完成 |
+| **M3 账号功能** | ✅ 关注流 / 收藏 / 关注 / 评论（只读）/ 通知 / 我的收藏 / **Notes（私信，走 WebView 过 Turnstile）** / Journal 阅读器；55 测试 | ~~4–5 天~~ 已完成 |
+| **性能与图片缓存** | ✅ 两级缓存 + ImageIO 解码期降采样 + 静态资源独立车道；真机：重进页面省 53–59% 网络，首屏出图 4.2s 量级 → ~1s | 1 天（插单） |
+| **M4 阅读器** | 小说阅读器（txt/md 原生，docx/pdf 分级降级）、进度记忆、离线 | 4–6 天 |
+| **M5 打磨发布** | 主题、空态/错误态、无障碍、图标、TrollStore 打包 | 3–4 天 |
 | **合计** | | **24–32 人天** |
 
 > 顺序建议：M0 → M1（先能看）→ **M2**（没有它，NSFW/收藏/通知全都做不了）→ M3 → M4。
