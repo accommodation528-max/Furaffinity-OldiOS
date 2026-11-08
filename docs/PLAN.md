@@ -249,7 +249,7 @@ cp xtool/FAIOS.ipa /mnt/d/faios/build/
 | **M2 Cloudflare 与会话** | ✅ 常驻 WebView + 登录 sheet（密码不经过 App）+ Keychain cookie + 挑战修复链路；实测 cf_clearance 非必需（有 a/b 就够） | ~~4–5 天~~ 已完成 |
 | **M3 账号功能** | ✅ 关注流 / 收藏 / 关注 / 评论（只读）/ 通知 / 我的收藏 / **Notes（私信，走 WebView 过 Turnstile）** / Journal 阅读器；55 测试 | ~~4–5 天~~ 已完成 |
 | **性能与图片缓存** | ✅ 两级缓存 + ImageIO 解码期降采样 + 静态资源独立车道；真机：重进页面省 53–59% 网络，首屏出图 4.2s 量级 → ~1s | 1 天（插单） |
-| **M4 阅读器** | 小说阅读器（txt/md 原生，docx/pdf 分级降级）、进度记忆、离线 | 4–6 天 |
+| **M4 阅读器** ✅ | 小说阅读器（txt/md → BBCode 原生排版，pdf → PDFKit，docx/rtf → 系统打开）、字号/行距、进度记忆；Journal 阅读器同批完成 | 4–6 天 |
 | **M5 打磨发布** | 主题、空态/错误态、无障碍、图标、TrollStore 打包 | 3–4 天 |
 | **合计** | | **24–32 人天** |
 
